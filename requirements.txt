@@ -1,0 +1,22 @@
+This is a short list of requirements. There is no package management for C++, so please download these all:
+# Source files
+Main.cpp
+Grid.cpp
+RuleSet.cpp
+Cell.cpp
+
+# Header files
+Cell.h
+Grid.h
+RuleSet.h
+
+# Libraries
+SFML (https://www.sfml-dev.org/)
+- sfml-graphics
+- sfml-window
+- sfml-system
+
+And also download CMake
+
+Run g++ -std=c++11 -o cellular_automata Main.cpp Grid.cpp RuleSet.cpp Cell.cpp -lsfml-graphics -lsfml-window -lsfml-system
+to compile

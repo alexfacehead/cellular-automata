@@ -12,6 +12,14 @@ This project provides a C++ implementation of 2D cellular automata with customiz
 
 To get started, simply compile and run the provided code. You can customize the grid size, initial states, and rulesets as you see fit. Have fun experimenting with different patterns and rules, and watch as your grid comes to life!
 
+Run:
+`g++ -std=c++11 -o cellular_automata Main.cpp Grid.cpp RuleSet.cpp Cell.cpp -lsfml-graphics -lsfml-window -lsfml-system`
+
+Then run:
+`./cellular_automata` on Linux/WSL
+OR
+`.\cellular_automata` on Windows (if I recall correctly, apologies, I strongly recommend using https://learn.microsoft.com/en-us/windows/wsl/install)
+
 ## Acknowledgments 🙌
 
 This project is inspired by the work of Stephen Wolfram, a pioneer in the field of cellular automata research. His groundbreaking discoveries have shed light on the complex behaviors that can arise from simple rules, and have inspired countless researchers and enthusiasts alike.
