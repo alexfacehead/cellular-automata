@@ -1,5 +1,9 @@
 #include "Cell.h"
 
+Cell::Cell() : m_alive(false), m_neighbors(0), m_x(0), m_y(0)
+{
+}
+
 Cell::Cell(int x, int y, bool initialState)
     : m_alive(initialState), m_neighbors(0), m_x(x), m_y(y)
 {
@@ -24,7 +28,7 @@ bool Cell::setAlive(bool alive)
 bool Cell::setDead()
 {
     bool wasAlive = isAlive();
-    m_alive = !dead;  
+    m_alive = false;
     return wasAlive;
 }
 

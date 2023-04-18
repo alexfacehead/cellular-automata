@@ -1,6 +1,6 @@
 # Cellular Automata Playground 🎉
 
-Welcome to the Cellular Automata Playground! This is a fun and simple project inspired by Stephen Wolfram's research on cellular automata. Dive into the world of simple rules and complex patterns, and explore the fascinating emergent behaviors that arise from these tiny cells.
+Welcome to the shitty Cellular Automata project! This is a fun and simple project inspired by Stephen Wolfram's research on cellular automata. Dive into the world of simple rules and complex patterns, and explore the fascinating emergent behaviors that arise from these tiny cells.
 
 ## What is Cellular Automata? 🤔
 
@@ -15,6 +15,8 @@ To get started, simply compile and run the provided code. You can customize the 
 ## Acknowledgments 🙌
 
 This project is inspired by the work of Stephen Wolfram, a pioneer in the field of cellular automata research. His groundbreaking discoveries have shed light on the complex behaviors that can arise from simple rules, and have inspired countless researchers and enthusiasts alike.
+
+One of my personal goals is to understand C++ well enough to be able to efficiently render his recent research regarding 3D hypergraphs. These things are amazing: computatinal irreducibility, incredible emergent phenomena, and potentially a new framework for physics are just the tip of the iceberg. `directed-graph-3D` is 
 
 ## License 📄
 

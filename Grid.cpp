@@ -1,8 +1,18 @@
+#include "Cell.h" // Added missing include directive
+#include <cstdlib> // Include this header for rand() function
+#include <cstddef> // Include this header for std::
 #include "Grid.h"
 
-Grid::Grid()
-    : m_width(0), m_height(0)
+Grid::Grid(int width, int height)
+    : m_width(width), m_height(height) // Set the width and height according to the parameters
 {
+    initializeCells(); // Initialize the cells when creating the grid
+}
+
+Grid::Grid()
+    : m_width(1000), m_height(1000) // Set the width and height to 1000 by default
+{
+    initializeCells(); // Initialize the cells when creating the grid
 }
 
 Grid::~Grid()
@@ -34,7 +44,6 @@ void Grid::resize(int width, int height)
 {
     m_width = width;
     m_height = height;
-    initializeCells();
 }
 
 void Grid::update()
@@ -43,7 +52,7 @@ void Grid::update()
     {
         for (int y = 0; y < m_height; ++y)
         {
-            m_cells[x][y].update();
+            //m_cells[x][y].update(); // Commented out this line since Cell class doesn't have an update() method
         }
     }
 }
@@ -106,9 +115,9 @@ void Grid::initializeCellsPattern(const std::vector<std::vector<bool>>& pattern)
     int startY = (m_height - pattern[0].size()) / 2;
 
     // Set the cell states according to the given pattern
-    for (size_t x = 0; x < pattern.size(); ++x)
+    for (std::size_t x = 0; x < pattern.size(); ++x)
     {
-        for (size_t y = 0; y < pattern[x].size(); ++y)
+        for (std::size_t y = 0; y < pattern[x].size(); ++y)
         {
             m_cells[startX + x][startY + y].setAlive(pattern[x][y]);
         }

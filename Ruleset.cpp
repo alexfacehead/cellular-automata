@@ -13,7 +13,7 @@ RuleSet::~RuleSet()
     // No resources to clean up in this example
 }
 
-void RuleSet::applyRules(Grid& grid)
+void RuleSet::updateGrid(Grid& grid)
 {
     Grid newGrid = grid; // Create a copy of the current grid to store the updated states
 
@@ -23,6 +23,8 @@ void RuleSet::applyRules(Grid& grid)
         {
             bool newState = applyRule(grid, x, y);
             newGrid.setCell(x, y, newState);
+            int neighbors = countNeighbors(grid, x, y);
+            newGrid.getCell(x, y).setNeighbors(neighbors);
         }
     }
 

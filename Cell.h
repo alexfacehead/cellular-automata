@@ -3,13 +3,14 @@
 class Cell
 {
 public:
+    Cell();
     Cell(int x, int y, bool initialState);
     ~Cell();
 
     // Getters and setters
     bool isAlive() const;
     bool setAlive(bool alive);
-    bool setDead(bool dead);
+    bool setDead();
     int getNeighbors() const;
     void setNeighbors(int neighbors);
     int getX() const;
