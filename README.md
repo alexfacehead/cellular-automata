@@ -24,7 +24,13 @@ OR
 
 This project is inspired by the work of Stephen Wolfram, a pioneer in the field of cellular automata research. His groundbreaking discoveries have shed light on the complex behaviors that can arise from simple rules, and have inspired countless researchers and enthusiasts alike.
 
-One of my personal goals is to understand C++ well enough to be able to efficiently render his recent research regarding 3D hypergraphs. These things are amazing: computatinal irreducibility, incredible emergent phenomena, and potentially a new framework for physics are just the tip of the iceberg. `directed-graph-3D` is 
+One of my personal goals is to understand C++ well enough to be able to efficiently render his recent research regarding 3D hypergraphs. These things are amazing: computatinal irreducibility, incredible emergent phenomena, and potentially a new framework for physics are just the tip of the iceberg. `directed-graph-3D` is a very, very simple example of computations that end up incredibly complex with simple rules to start.
+
+## TO DO
+
+- Make it easier to alter the simulation (ETA 24-72 hours)
+- Add colors!
+- Add new RuleSets and a cooler UI
 
 ## License 📄
 
