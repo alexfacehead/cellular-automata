@@ -1,0 +1,430 @@
+Hello Bing. Please carefully observe every numbered file in this document. I want you to attempt to fix my `Main.cpp` file that occurs at the bottom - number 7 - by cleaning it up, removing methods that have already been implemented, and then finally, fixing the abstract functionality. If I am missing substantial functionality, let me know at the end.
+1. `Cell.cpp`:
+```#include "Cell.h"
+
+Cell::Cell() : m_alive(false), m_neighbors(0), m_x(0), m_y(0)
+{
+}
+
+Cell::Cell(int x, int y, bool initialState)
+    : m_alive(initialState), m_neighbors(0), m_x(x), m_y(y)
+{
+}
+
+Cell::~Cell()
+{
+}
+
+bool Cell::isAlive() const
+{
+    return m_alive;
+}
+
+bool Cell::setAlive(bool alive)
+{
+    bool stateChanged = (m_alive != alive);
+    m_alive = alive;
+    return stateChanged;
+}
+
+bool Cell::setDead()
+{
+    bool wasAlive = isAlive();
+    m_alive = false;
+    return wasAlive;
+}
+
+
+int Cell::getNeighbors() const
+{
+    return m_neighbors;
+}
+
+
+int Cell::getX() const
+{
+    return m_x;
+}
+
+int Cell::getY() const
+{
+    return m_y;
+}
+
+void Cell::setNeighbors(int neighbors)
+{
+    m_neighbors = neighbors;
+}```
+2. `Cell.h`:
+```#pragma once
+
+class Cell
+{
+public:
+    Cell();
+    Cell(int x, int y, bool initialState);
+    ~Cell();
+
+    // Getters and setters
+    bool isAlive() const;
+    bool setAlive(bool alive);
+    bool setDead();
+    int getNeighbors() const;
+    void setNeighbors(int neighbors);
+    int getX() const;
+    int getY() const;
+
+private:
+    bool m_alive;
+    int m_neighbors;
+    int m_x;
+    int m_y;
+};```
+3. `Grid.cpp`:
+```#include "Cell.h" // Added missing include directive
+#include <cstdlib> // Include this header for rand() function
+#include <cstddef> // Include this header for std::
+#include "Grid.h"
+
+Grid::Grid(int width, int height)
+    : m_width(width), m_height(height) // Set the width and height according to the parameters
+{
+    initializeCells(); // Initialize the cells when creating the grid
+}
+
+Grid::Grid()
+    : m_width(1000), m_height(1000) // Set the width and height to 1000 by default
+{
+    initializeCells(); // Initialize the cells when creating the grid
+}
+
+Grid::~Grid()
+{
+    // No resources to clean up in this implementation
+}
+
+int Grid::getWidth() const
+{
+    return m_width;
+}
+
+int Grid::getHeight() const
+{
+    return m_height;
+}
+
+const Cell& Grid::getCell(int x, int y) const {
+    return m_cells[x][y];
+}
+
+Cell& Grid::getCell(int x, int y)
+{
+    return m_cells[x][y];
+}
+
+void Grid::setCell(int x, int y, bool state)
+{
+    m_cells[x][y].setAlive(state);
+}
+
+void Grid::resize(int width, int height)
+{
+    m_width = width;
+    m_height = height;
+}
+
+void Grid::update(const RuleSet& ruleSet) {
+    // Create a temporary grid to store the updated cell states
+    std::vector<std::vector<Cell>> updatedCells = m_cells;
+
+    for (int x = 0; x < m_width; ++x) {
+        for (int y = 0; y < m_height; ++y) {
+            // Apply the rules to the cell at (x, y) and store the result in the temporary grid
+            updatedCells[x][y].setAlive(ruleSet.applyRuleConway(*this, x, y));
+        }
+    }
+
+    // Replace the current grid with the updated grid
+    m_cells = updatedCells;
+}
+
+// Random ruleset
+void Grid::initializeCells()
+{
+    m_cells.resize(m_width, std::vector<Cell>(m_height));
+    // Initialize cell states here, e.g., with random initial states
+    for (int x = 0; x < m_width; ++x)
+    {
+        for (int y = 0; y < m_height; ++y)
+        {
+            // Set the cell state to a random value (true or false)
+            bool state = rand() % 2;
+            m_cells[x][y].setAlive(state);
+        }
+    }
+}
+
+// Conways game of life initial rules
+void Grid::initializeCellsConway()
+{
+    m_cells.resize(m_width, std::vector<Cell>(m_height));
+    for (int x = 0; x < m_width; ++x)
+    {
+        for (int y = 0; y < m_height; ++y)
+        {
+            // Set the cell state to a random value (true or false)
+            bool state = rand() % 2;
+            m_cells[x][y].setAlive(state);
+        }
+    }
+}
+
+// Random rule set for testing
+void Grid::initializeCellsCustom()
+{
+    m_cells.resize(m_width, std::vector<Cell>(m_height));
+    // Customize the initial state of cells as desired
+    // For example, create a pattern of cells in the center of the grid
+    int centerX = m_width / 2;
+    int centerY = m_height / 2;
+    
+    m_cells[centerX][centerY].setAlive(true);
+    m_cells[centerX + 1][centerY].setAlive(true);
+    m_cells[centerX][centerY + 1].setAlive(true);
+    m_cells[centerX - 1][centerY + 1].setAlive(true);
+    m_cells[centerX + 1][centerY + 1].setAlive(true);
+}
+
+
+// Set a particular pattern by passing an input 3X3 vector of Bools
+void Grid::initializeCellsPattern(const std::vector<std::vector<bool>>& pattern)
+{
+    m_cells.resize(m_width, std::vector<Cell>(m_height));
+    
+    // Calculate the starting position to place the pattern at the center of the grid
+    int startX = (m_width - pattern.size()) / 2;
+    int startY = (m_height - pattern[0].size()) / 2;
+
+    // Set the cell states according to the given pattern
+    for (std::size_t x = 0; x < pattern.size(); ++x)
+    {
+        for (std::size_t y = 0; y < pattern[x].size(); ++y)
+        {
+            m_cells[startX + x][startY + y].setAlive(pattern[x][y]);
+        }
+    }
+}```
+4. `Grid.h`:
+```#ifndef GRID_H
+#define GRID_H
+
+#include <vector>
+#include "Cell.h"
+#include "RuleSet.h"
+
+class Grid
+{
+public:
+    Grid(int width, int height);
+    Grid();
+    ~Grid();
+
+    int getWidth() const;
+    int getHeight() const;
+    Cell& getCell(int x, int y);
+    const Cell& getCell(int x, int y) const; // Add this line
+    void setCell(int x, int y, bool state);
+    void resize(int width, int height);
+    void update(const RuleSet& ruleSet); // Modify the function signature to accept a RuleSet reference
+
+    void initializeCells();
+    void initializeCellsConway();
+    void initializeCellsCustom();
+    void initializeCellsPattern(const std::vector<std::vector<bool>>& pattern);
+
+private:
+    int m_width;
+    int m_height;
+    std::vector<std::vector<Cell>> m_cells;
+};
+#endif```
+5. `RuleSet.cpp`:
+```// RuleSet.cpp
+
+#include "RuleSet.h"
+#include "Grid.h"
+
+RuleSet::RuleSet()
+{
+    // No resources to initialize in this implementation
+}
+
+RuleSet::~RuleSet()
+{
+    // No resources to clean up in this implementation
+}
+
+int RuleSet::countNeighbors(const Grid& grid, int x, int y) const
+{
+    int count = 0;
+
+    for (int dx = -1; dx <= 1; ++dx)
+    {
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            if (dx == 0 && dy == 0) continue; // Skip the current cell
+
+            int nx = x + dx;
+            int ny = y + dy;
+
+            // Check if the neighbor's coordinates are within the grid boundaries
+            if (nx >= 0 && nx < grid.getWidth() && ny >= 0 && ny < grid.getHeight())
+            {
+                if (grid.getCell(nx, ny).isAlive())
+                {
+                    count++;
+                }
+            }
+        }
+    }
+
+    return count;
+}
+
+bool RuleSet::applyRuleConway(const Grid& grid, int x, int y) const
+{
+    int neighbors = countNeighbors(grid, x, y);
+    bool currentState = grid.getCell(x, y).isAlive();
+
+    // Implement a specific rule based on the cell's state and its neighbors
+    // Example: Conway's Game of Life rules
+    if (currentState)
+    {
+        // Cell is alive
+        if (neighbors < 2 || neighbors > 3)
+        {
+            return false; // Cell dies due to underpopulation or overpopulation
+        }
+        else
+        {
+            return true; // Cell survives
+        }
+    }
+    else
+    {
+        // Cell is dead
+        if (neighbors == 3)
+        {
+            return true; // Cell becomes alive due to reproduction
+        }
+        else
+        {
+            return false; // Cell remains dead
+        }
+    }
+}```
+6. `RuleSet.h`:
+```#ifndef RULESET_H
+#define RULESET_H
+
+#include "Cell.h"
+
+class Grid; // Add this forward declaration
+
+class RuleSet
+{
+public:
+    RuleSet();
+    ~RuleSet();
+
+    int countNeighbors(const Grid& grid, int x, int y) const;
+    bool applyRuleConway(const Grid& grid, int x, int y) const;
+};
+
+#endif```
+7. (Fix, clean and update)
+`Main.cpp`:
+```// Main.cpp
+
+// Required includes
+#include <iostream>
+#include <vector>
+#include <string>
+#include <ctime>
+#include <cstdlib>
+#include <stdexcept>
+
+// Graphical library includes
+#include <SFML/Graphics.hpp>
+#include <SFML/Window.hpp>
+#include <SFML/System.hpp>
+
+// Custom includes
+#include "Cell.h"
+#include "Grid.h"
+#include "RuleSet.h"
+
+// Function prototypes
+void initializeGrid(Grid& grid, int width, int height, int cellSize);
+void applyRules(Grid& grid, const RuleSet& rules);
+void render(sf::RenderWindow& window, const Grid& grid);
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules);
+
+int main()
+{
+
+    
+    // Constants
+    const int windowWidth = 800;
+    const int windowHeight = 600;
+    const int cellSize = 10;
+    const int gridWidth = windowWidth / cellSize;
+    const int gridHeight = windowHeight / cellSize;
+    const std::string windowTitle = "2D Cellular Automata";
+
+    // Custom init rules
+    const std::vector<std::vector<bool>> customPattern = {
+    {false, true, false},
+    {true, true, true},
+    {false, true, false}
+    };
+
+    // Initialize random seed
+    std::srand(static_cast<unsigned>(std::time(0)));
+
+    // Create the window
+    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), windowTitle);
+
+    // Create the grid, cells, and rules
+    Grid grid;
+    RuleSet rules;
+    initializeGrid(grid, gridWidth, gridHeight, cellSize);
+
+    // Main loop
+    while (window.isOpen())
+    {
+        // Handle input
+        handleInput(window, grid, rules);
+
+        // Apply rules
+        applyRules(grid, rules);
+
+        // Render
+        window.clear();
+        render(window, grid);
+        window.display();
+    }
+
+    return 0;
+}
+
+
+void render(sf::RenderWindow& window, const Grid& grid)
+{
+    // TODO: Implement rendering
+}
+
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules)
+{
+    // TODO: Implement input handling
+}```

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "Cell.h"
+#include "RuleSet.h"
 
 class Grid
 {
@@ -14,10 +15,10 @@ public:
     int getWidth() const;
     int getHeight() const;
     Cell& getCell(int x, int y);
-    const Cell& getCell(int x, int y) const; // Added const version of getCell
+    const Cell& getCell(int x, int y) const; // Add this line
     void setCell(int x, int y, bool state);
     void resize(int width, int height);
-    void update();
+    void update(const RuleSet& ruleSet); // Modify the function signature to accept a RuleSet reference
 
     void initializeCells();
     void initializeCellsConway();
@@ -29,5 +30,4 @@ private:
     int m_height;
     std::vector<std::vector<Cell>> m_cells;
 };
-
 #endif

@@ -30,6 +30,10 @@ int Grid::getHeight() const
     return m_height;
 }
 
+const Cell& Grid::getCell(int x, int y) const {
+    return m_cells[x][y];
+}
+
 Cell& Grid::getCell(int x, int y)
 {
     return m_cells[x][y];
@@ -46,15 +50,19 @@ void Grid::resize(int width, int height)
     m_height = height;
 }
 
-void Grid::update()
-{
-    for (int x = 0; x < m_width; ++x)
-    {
-        for (int y = 0; y < m_height; ++y)
-        {
-            //m_cells[x][y].update(); // Commented out this line since Cell class doesn't have an update() method
+void Grid::update(const RuleSet& ruleSet) {
+    // Create a temporary grid to store the updated cell states
+    std::vector<std::vector<Cell>> updatedCells = m_cells;
+
+    for (int x = 0; x < m_width; ++x) {
+        for (int y = 0; y < m_height; ++y) {
+            // Apply the rules to the cell at (x, y) and store the result in the temporary grid
+            updatedCells[x][y].setAlive(ruleSet.applyRuleConway(*this, x, y));
         }
     }
+
+    // Replace the current grid with the updated grid
+    m_cells = updatedCells;
 }
 
 // Random ruleset
