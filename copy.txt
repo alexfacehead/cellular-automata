@@ -1,4 +1,3 @@
-#include <iostream>
 #include <filesystem>
 #include <vector>
 #include <string>
@@ -15,30 +14,32 @@
 #include "Cell.h"
 #include "Grid.h"
 #include "RuleSet.h"
-#include "Menu.h"
+#include "Menu.h" // Include the menu class header file
 
 // Function prototypes
 void initializeGrid(Grid& grid, int width, int height, int cellSize);
 void applyRules(Grid& grid, const RuleSet& rules);
 void render(sf::RenderWindow& window, const Grid& grid);
-void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize, Menu& menu);
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize);
+// void showMenu(sf::RenderWindow& window); // Remove this function as it is now part of the menu class
+// void handleMenuInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules); // Remove this function as it is now part of the menu class
+// void showSettings(sf::RenderWindow& window); // Remove this function as it is now part of the menu class
+// void handleSettingsInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules); // Remove this function as it is now part of the menu class
 
 // static global vars
-// Define the global variables in Main.cpp
-int simulationSpeed = 0.15f;
+const int windowWidth = 800;
+const int windowHeight = 600;
+int cellSize = 10; // Make this variable non-constant so it can be changed in settings
+float simulationSpeed = 0.1f; // Add a variable to control the simulation speed in seconds
+// Create a boolean flag to indicate if the simulation is paused or not
 bool paused = false;
-bool settingsShown = false;
-
-sf::Font font;
-// Create text objects to represent the menu options
-sf::Text restartText("Restart Simulation & Apply Rules", font);
-sf::Text resumeText("Resume Simulation", font);
-sf::Text settingsText("Settings", font);
 // Create a clock to control the simulation speed
 sf::Clock simulationClock;
 
 int main()
 {
+
+    // Constants
     int gridWidth = windowWidth / cellSize; // Make this variable non-constant so it can be changed in settings
     int gridHeight = windowHeight / cellSize; // Make this variable non-constant so it can be changed in settings
     const std::string windowTitle = "2D Cellular Automata";
@@ -59,18 +60,19 @@ int main()
     // Create the grid and rules
     Grid grid(gridWidth, gridHeight); // Use the constructor that takes width and height parameters
     RuleSet rules;
-    // Create a Menu instance
-    Menu menu(grid, rules);
+
     // Initialize the grid with a custom pattern
     grid.initializeCellsPattern(customPattern);
-    menu.toggle();
+
+    // Create the menu object and pass a reference to the window and font file path
+    Menu menu(window, "resources/arial.ttf");
 
     // Main loop
     while (window.isOpen())
     {
-        if (!menu.isShown() && !settingsShown) {
+        if (!menu.isShown()) { // Check if the menu is shown using the menu object method
             // Handle input
-            handleInput(window, grid, rules, cellSize, menu);
+            handleInput(window, grid, rules, cellSize);
 
             // Apply rules only if the simulation is not paused and enough time has passed since the last update
             if (!paused && simulationClock.getElapsedTime().asSeconds() >= simulationSpeed) { // Use ::simulationClock to access the global simulationClock object
@@ -78,27 +80,16 @@ int main()
                 ::simulationClock.restart(); // Reset the simulationClock
             }
         }
-        else if (menu.isShown()) {
-            // Handle menu input
-            menu.handleMenuInput(window);
+        else {
+            // Handle menu input using the menu object method and pass references to the grid and rules objects
+            menu.handleInput(grid, rules);
 
-            // Show menu only if the settings are not shown
-            if (!settingsShown) {
-                menu.showMenu(window);
-            }
-        }
-        else if (settingsShown) {
-            // Handle settings input
-            menu.handleSettingsInput(window);
-
-            // Show settings only if the menu is shown
-            if (menu.isShown()) {
-                menu.showSettings(window);
-            }
+            // Show menu using the menu object method
+            menu.show();
         }
 
-        // Render only if the menu and settings are not shown
-        if (!menu.isShown() && !settingsShown) {
+        // Render only if the menu is not shown using the menu object method
+        if (!menu.isShown()) {
             window.clear();
             render(window, grid);
             window.display();
@@ -151,7 +142,7 @@ void render(sf::RenderWindow& window, const Grid& grid)
     }
 }
 
-void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize, Menu& menu)
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize)
 {
     // Declare an event variable to store events from the window
     sf::Event event;
@@ -181,8 +172,8 @@ void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellS
                 }
                 else if (event.key.code == sf::Keyboard::M) // The user pressed M key
                 {
-                    menu.toggle(); // Toggle the menu visibility using the Menu class method
-                    paused = menu.isShown(); // Pause the simulation if the menu is shown
+                    menu.toggle(); // Toggle the menu using the menu object method
+                    paused = menu.isShown(); // Pause the simulation if the menu is shown using the menu object method
                 }
                 break;
 

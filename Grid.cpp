@@ -57,7 +57,7 @@ void Grid::update(const RuleSet& ruleSet) {
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {
             // Apply the rules to the cell at (x, y) and store the result in the temporary grid
-            updatedCells[x][y].setAlive(ruleSet.applyRuleConway(*this, x, y));
+            updatedCells[x][y].setAlive(ruleSet.applyRuleChosen(*this, x, y));
         }
     }
 

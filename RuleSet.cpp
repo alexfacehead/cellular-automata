@@ -40,7 +40,7 @@ int RuleSet::countNeighbors(const Grid& grid, int x, int y) const
     return count;
 }
 
-bool RuleSet::applyRuleConway(const Grid& grid, int x, int y) const
+bool RuleSet::applyRuleChosen(const Grid& grid, int x, int y) const
 {
     int neighbors = countNeighbors(grid, x, y);
     bool currentState = grid.getCell(x, y).isAlive();
