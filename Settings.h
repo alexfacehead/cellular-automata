@@ -3,9 +3,8 @@
 #define SETTINGS_H
 
 // Include the header files
-#include "Menu.h"
 #include <SFML/Graphics.hpp>
-
+#include <vector>
 
 class Settings
 {
@@ -16,12 +15,20 @@ private:
     int cellSize;
     float simulationSpeed;
 
+    // Declare a private member variable for the custom pattern setting
+    std::vector<std::vector<bool>> customPattern;
+
 public:
+    // Declare a constructor for the Settings class
+    Settings();
+
     // Getters
     int getWindowSizeWidth();
     int getWindowSizeHeight();
     int getCellSize();
     float getSimulationSpeed();
+    // Getter method for the custom pattern setting
+    std::vector<std::vector<bool>> getCustomPattern();
 
 
     // Setters
@@ -29,27 +36,14 @@ public:
     void setWindowSizeWidth(int width);
     void setWindowSizeHeight(int height);
     void setSimulationSpeed(float speed);
-    
-    // Declare a constructor that takes a reference to a Grid object and a reference to a RuleSet object as parameters
-    Menu(Grid& grid, RuleSet& rules);
+    // Setter method for the custom pattern setting
+    void setCustomPattern(std::vector<std::vector<bool>> pattern);
 
-    // Declare a method that returns the menu visibility
-    bool isShown();
+    // Declare a public method to read the custom pattern setting from a text file
+    void readCustomPattern();
 
-    // Declare a method that toggles the menu visibility
-    void toggle();
-
-    // Declare a method that displays the menu on the window
-    void showMenu(sf::RenderWindow& window);
-
-    // Declare a method that handles the user input for the menu
-    void handleMenuInput(sf::RenderWindow& window);
-
-    // Declare a method that displays the settings on the window
-    void showSettings(sf::RenderWindow& window);
-
-    // Declare a method that handles the user input for the settings
-    void handleSettingsInput(sf::RenderWindow& window);
+    // Declare a public method to write the custom pattern setting to a text file
+    void writeCustomPattern();
 };
 
-#endif // MENU_H
+#endif // SETTINGS_H

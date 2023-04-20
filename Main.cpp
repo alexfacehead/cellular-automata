@@ -16,6 +16,7 @@
 #include "Grid.h"
 #include "RuleSet.h"
 #include "Menu.h"
+#include "Settings.h"
 
 // Function prototypes
 void initializeGrid(Grid& grid, int width, int height, int cellSize);
@@ -28,6 +29,7 @@ void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellS
 int simulationSpeed = 0.15f;
 bool paused = false;
 bool settingsShown = false;
+Settings settings;
 
 sf::Font font;
 // Create text objects to represent the menu options
