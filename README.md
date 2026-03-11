@@ -1,6 +1,6 @@
 # Cellular Automata Playground
 
-A 2D cellular automata simulator built in C++ with SFML. Explore 32 preset rulesets — from Conway's Game of Life to fractal replicators — or define your own using Birth/Survival notation. Features age-based color rendering, adjustable grid resolution down to 1px per cell (480,000 cells), and real-time speed control.
+A 2D cellular automata simulator built in C++ with SFML. Explore 32 preset rulesets — from Conway's Game of Life to fractal replicators - or define your own using Birth/Survival notation. Features age-based color rendering, adjustable grid resolution down to 1px per cell (480,000 cells), and real-time speed control.
 
 Inspired by Stephen Wolfram's *A New Kind of Science* and the idea that extraordinarily complex behavior can emerge from extremely simple rules.
 
@@ -16,7 +16,25 @@ For example, Conway's Game of Life is **B3/S23** — a dead cell is born with ex
 
 ## Getting Started
 
-### Prerequisites
+### Quick Setup (Recommended)
+
+Setup scripts that install dependencies and compile automatically:
+
+**macOS / Linux:**
+
+```bash
+./setup.sh
+```
+
+**Windows:**
+
+```bat
+setup.bat
+```
+
+### Manual Setup
+
+#### Prerequisites
 
 - A C++ compiler with C++17 support (GCC, Clang, or MSVC)
 - [SFML 2.x](https://www.sfml-dev.org/)
@@ -33,13 +51,13 @@ brew install sfml@2
 sudo apt install libsfml-dev
 ```
 
-### Build
+#### Build
 
 **macOS (Homebrew):**
 
 ```bash
 g++ -std=c++17 -o cellular_automata \
-    Main.cpp Grid.cpp Ruleset.cpp Cell.cpp Menu.cpp Settings.cpp \
+    Main.cpp Grid.cpp RuleSet.cpp Cell.cpp Menu.cpp Settings.cpp \
     -I/opt/homebrew/opt/sfml@2/include \
     -L/opt/homebrew/opt/sfml@2/lib \
     -lsfml-graphics -lsfml-window -lsfml-system
@@ -49,7 +67,7 @@ g++ -std=c++17 -o cellular_automata \
 
 ```bash
 g++ -std=c++17 -o cellular_automata \
-    Main.cpp Grid.cpp Ruleset.cpp Cell.cpp Menu.cpp Settings.cpp \
+    Main.cpp Grid.cpp RuleSet.cpp Cell.cpp Menu.cpp Settings.cpp \
     -lsfml-graphics -lsfml-window -lsfml-system
 ```
 
@@ -148,12 +166,14 @@ Active frontiers glow white while stable structures deepen into blue and purple.
 
 ```
 cellular-automata/
-    Main.cpp          Entry point, render loop, input handling, HUD
+    Main.cpp                  Entry point, render loop, input handling, HUD
     Grid.h / Grid.cpp         Cell grid with initialization modes
     Cell.h / Cell.cpp         Cell state and age tracking
-    RuleSet.h / Ruleset.cpp   B/S rule engine and 32 presets
+    RuleSet.h / RuleSet.cpp   B/S rule engine and 32 presets
     Menu.h / Menu.cpp         Rule selection UI, custom rules editor
     Settings.h / Settings.cpp Settings persistence (pattern file I/O)
+    setup.sh                  Auto-setup script (macOS / Linux)
+    setup.bat                 Auto-setup script (Windows)
     resources/
         arial.ttf             Font used for UI rendering
 ```

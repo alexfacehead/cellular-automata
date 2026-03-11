@@ -1,5 +1,6 @@
 # Compiled binary
 cellular_automata
+cellular_automata.exe
 
 # Build artifacts
 *.o
