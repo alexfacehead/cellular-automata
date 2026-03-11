@@ -1,321 +1,699 @@
-// Include the header files
 #include "Menu.h"
-#include "Grid.h"
-#include "RuleSet.h"
-#include <SFML/Graphics.hpp>
-#include <filesystem>
+#include <cstring>
+#include <cstdio>
 
-// Use the sf namespace
 using namespace sf;
 
-// Define a constructor that takes a reference to a Grid object and a reference to a RuleSet object as parameters
-// Initialize grid and rules using a member initializer list
-Menu::Menu(Grid& grid, RuleSet& rules) : grid(grid), rules(rules)
+// --- Speed options ---
+static const float allSpeeds[] = { 0.02f, 0.05f, 0.08f, 0.10f, 0.15f, 0.25f, 0.40f };
+static const int numSpeeds = 7;
+
+static int findSpeedIndex(float speed)
 {
-    
-    std::filesystem::path resourcesPath = "/home/dev/cellular-automata-2D/resources";
-    font.loadFromFile((resourcesPath / "arial.ttf").string());
+    int closest = 0;
+    float diff = 999.f;
+    for (int i = 0; i < numSpeeds; i++) {
+        float d = std::abs(allSpeeds[i] - speed);
+        if (d < diff) { diff = d; closest = i; }
+    }
+    return closest;
+}
 
-    // Set the font for the text objects
-    restartText.setFont(font);
-    resumeText.setFont(font);
-    settingsText.setFont(font);
+static std::string speedLabel(float speed)
+{
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.2fs", speed);
+    return buf;
+}
 
-    // Set the string for the text objects
-    restartText.setString("Restart Simulation & Apply Rules");
-    resumeText.setString("Resume Simulation");
-    settingsText.setString("Settings");
+// --- Init mode / cell size options ---
+static const InitMode allInitModes[] = {
+    InitMode::RANDOM_50, InitMode::RANDOM_25, InitMode::RANDOM_10,
+    InitMode::RANDOM_5, InitMode::SINGLE_SEED, InitMode::CLUSTER
+};
+static const int numInitModes = 6;
 
-    // Set the font for the text objects
-    windowSizeText.setFont(font);
-    cellSizeText.setFont(font);
-    simulationSpeedText.setFont(font);
-    rulesText.setFont(font);
+static const int allCellSizes[] = { 1, 2, 3, 5, 10, 15, 20 };
+static const int numCellSizes = 7;
 
-    // Set the string for the text objects
-    windowSizeText.setString("Window Size:");
-    cellSizeText.setString("Cell Size:");
-    simulationSpeedText.setString("Simulation Speed:");
-    rulesText.setString("Rules:");
+// --- Layout constants ---
+static const int rowY0 = 88;     // first button row
+static const int rowSpacing = 26;
+static const int btnH = 20;
+static const int btnGap = 5;
+static const int listStartY = rowY0 + rowSpacing * 3 + 8;
+static const int itemH = 22;
+static const int headerH = 26;
 
-    // Set the menu visibility to false by default
+// --- Button position helpers ---
+struct BtnLayout { float x[12]; float w[12]; int count; float labelX; };
+
+static BtnLayout layoutButtons(sf::Font& font, const char* labels[], int n, int fontSize = 11)
+{
+    BtnLayout bl;
+    bl.count = n;
+    float totalW = 0;
+    for (int i = 0; i < n; i++) {
+        sf::Text t(labels[i], font, fontSize);
+        bl.w[i] = t.getGlobalBounds().width + 14;
+        totalW += bl.w[i] + btnGap;
+    }
+    totalW -= btnGap;
+    float x = (windowWidth - totalW) / 2.f;
+    bl.labelX = x;
+    for (int i = 0; i < n; i++) {
+        bl.x[i] = x;
+        x += bl.w[i] + btnGap;
+    }
+    return bl;
+}
+
+// ============================================================
+
+Menu::Menu(Grid& grid, RuleSet& rules) : grid(grid), rules(rules),
+    currentPage(MenuPage::RULES), selectedIndex(0), scrollOffset(0),
+    initMode(InitMode::RANDOM_50)
+{
+    font.loadFromFile("resources/arial.ttf");
+    presets = RuleSet::getPresets();
+    buildVisualItems();
+    // Default selectedIndex to first selectable item
+    for (int i = 0; i < (int)visualItems.size(); i++) {
+        if (visualItems[i].type != VisualItem::HEADER) { selectedIndex = i; break; }
+    }
+    std::memset(customBirth, 0, sizeof(customBirth));
+    std::memset(customSurvival, 0, sizeof(customSurvival));
+    customBirth[3] = true;
+    customSurvival[2] = true;
+    customSurvival[3] = true;
     shown = false;
 }
 
-// bool Menu::isMenuShown() {
-//     return menuShown;
-// }
-
-void Menu::showMenu(sf::RenderWindow& window) 
+void Menu::buildVisualItems()
 {
-    // Create a rectangle shape to represent the menu background
-    sf::RectangleShape menuBackground(sf::Vector2f(windowWidth / 2, windowHeight / 2));
-    
-    // Set the position and color of the menu background shape
-    menuBackground.setPosition(windowWidth / 4, windowHeight / 4);
-    menuBackground.setFillColor(sf::Color(128, 128, 128));
-
-    // Draw the menu background shape on the window
-    window.draw(menuBackground);
-
-    // Set the character size and color of the text
-    restartText.setCharacterSize(24);
-    resumeText.setCharacterSize(24);
-    settingsText.setCharacterSize(24);
-
-    restartText.setFillColor(sf::Color::White);
-    resumeText.setFillColor(sf::Color::White);
-    settingsText.setFillColor(sf::Color::White);
-
-    // Set the origin of the text to the center
-    restartText.setOrigin(restartText.getLocalBounds().width / 2, restartText.getLocalBounds().height / 2);
-    resumeText.setOrigin(resumeText.getLocalBounds().width / 2, resumeText.getLocalBounds().height / 2);
-    settingsText.setOrigin(settingsText.getLocalBounds().width / 2, settingsText.getLocalBounds().height / 2);
-
-    // Set the position of the text relative to the menu background
-    restartText.setPosition(menuBackground.getPosition().x + menuBackground.getSize().x / 2, menuBackground.getPosition().y + menuBackground.getSize().y / 4);
-    resumeText.setPosition(menuBackground.getPosition().x + menuBackground.getSize().x / 2, menuBackground.getPosition().y + menuBackground.getSize().y / 2);
-    settingsText.setPosition(menuBackground.getPosition().x + menuBackground.getSize().x / 2, menuBackground.getPosition().y + menuBackground.getSize().y * 3 / 4);
-
-    // Draw the text on the window
-    window.draw(restartText);
-    window.draw(resumeText);
-    window.draw(settingsText);
-
-    // Display the window
-    window.display();
+    visualItems.clear();
+    std::string lastCat;
+    for (int i = 0; i < (int)presets.size(); i++) {
+        if (presets[i].category != lastCat) {
+            lastCat = presets[i].category;
+            VisualItem h;
+            h.type = VisualItem::HEADER;
+            h.presetIndex = -1;
+            h.label = lastCat;
+            visualItems.push_back(h);
+        }
+        VisualItem p;
+        p.type = VisualItem::PRESET;
+        p.presetIndex = i;
+        p.label = presets[i].name;
+        visualItems.push_back(p);
+    }
+    VisualItem c;
+    c.type = VisualItem::CUSTOM_OPT;
+    c.presetIndex = -1;
+    c.label = "Custom Rules...";
+    visualItems.push_back(c);
 }
 
-void Menu::toggle() {
+bool Menu::isShown() { return shown; }
+
+void Menu::toggle()
+{
     shown = !shown;
+    if (shown) currentPage = MenuPage::RULES;
 }
 
-bool Menu::isShown() {
-    return shown;
-}
-
-void Menu::handleMenuInput(sf::RenderWindow& window) // Remove unused parameters
+void Menu::showMenu(sf::RenderWindow& window)
 {
-    // Declare an event variable to store events from the window
-    sf::Event event;
+    switch (currentPage) {
+        case MenuPage::RULES:  showRulesPage(window); break;
+        case MenuPage::CUSTOM: showCustomPage(window); break;
+    }
+}
 
-    // Poll events from the window until there are none left
-    while (window.pollEvent(event))
+void Menu::handleMenuInput(sf::RenderWindow& window)
+{
+    switch (currentPage) {
+        case MenuPage::RULES:  handleRulesInput(window); break;
+        case MenuPage::CUSTOM: handleCustomInput(window); break;
+    }
+}
+
+const char* Menu::initModeName(InitMode mode)
+{
+    switch (mode) {
+        case InitMode::RANDOM_50:   return "50%";
+        case InitMode::RANDOM_25:   return "25%";
+        case InitMode::RANDOM_10:   return "10%";
+        case InitMode::RANDOM_5:    return "5%";
+        case InitMode::SINGLE_SEED: return "Seed";
+        case InitMode::CLUSTER:     return "Cluster";
+    }
+    return "";
+}
+
+void Menu::moveSelection(int dir)
+{
+    int n = (int)visualItems.size();
+    for (int attempt = 0; attempt < n; attempt++) {
+        selectedIndex += dir;
+        if (selectedIndex < 0) selectedIndex = n - 1;
+        if (selectedIndex >= n) selectedIndex = 0;
+        if (visualItems[selectedIndex].type != VisualItem::HEADER) break;
+    }
+}
+
+void Menu::initializeGrid()
+{
+    grid.resize(windowWidth / cellSize, windowHeight / cellSize);
+    switch (initMode) {
+        case InitMode::RANDOM_50:   grid.initializeCellsWithDensity(50); break;
+        case InitMode::RANDOM_25:   grid.initializeCellsWithDensity(25); break;
+        case InitMode::RANDOM_10:   grid.initializeCellsWithDensity(10); break;
+        case InitMode::RANDOM_5:    grid.initializeCellsWithDensity(5);  break;
+        case InitMode::SINGLE_SEED: grid.initializeCellsSeed();          break;
+        case InitMode::CLUSTER:     grid.initializeCellsCluster();       break;
+    }
+}
+
+void Menu::selectPreset(int index)
+{
+    if (index >= 0 && index < (int)presets.size()) {
+        rules = presets[index];
+        initializeGrid();
+        simulationClock.restart();
+        paused = false;
+        shown = false;
+    }
+}
+
+void Menu::applyCustomRule()
+{
+    std::vector<int> birth, survival;
+    for (int i = 0; i <= 8; i++) {
+        if (customBirth[i]) birth.push_back(i);
+        if (customSurvival[i]) survival.push_back(i);
+    }
+    rules.setRule("Custom", birth, survival);
+    rules.category = "";
+    initializeGrid();
+    simulationClock.restart();
+    paused = false;
+    shown = false;
+}
+
+// --- Draw a row of toggle buttons ---
+static void drawButtonRow(sf::RenderWindow& window, sf::Font& font,
+    int y, const char* rowLabel, const char* labels[], int n, int activeIdx,
+    sf::Color activeCol, sf::Color activeBorder)
+{
+    // Row label
+    sf::Text lbl(rowLabel, font, 10);
+    lbl.setFillColor(sf::Color(100, 100, 120));
+    float totalW = 0;
+    for (int i = 0; i < n; i++) {
+        sf::Text t(labels[i], font, 11);
+        totalW += t.getGlobalBounds().width + 14 + btnGap;
+    }
+    totalW -= btnGap;
+    float startX = (windowWidth - totalW) / 2.f;
+    lbl.setPosition(startX - lbl.getGlobalBounds().width - 8, y + 3);
+    window.draw(lbl);
+
+    float x = startX;
+    for (int i = 0; i < n; i++) {
+        sf::Text t(labels[i], font, 11);
+        float w = t.getGlobalBounds().width + 14;
+        bool sel = (i == activeIdx);
+
+        sf::RectangleShape btn(sf::Vector2f(w, btnH));
+        btn.setPosition(x, y);
+        btn.setFillColor(sel ? activeCol : sf::Color(32, 32, 42));
+        btn.setOutlineColor(sel ? activeBorder : sf::Color(55, 55, 65));
+        btn.setOutlineThickness(1);
+        window.draw(btn);
+
+        t.setFillColor(sel ? sf::Color(220, 230, 255) : sf::Color(120, 120, 135));
+        t.setPosition(x + 7, y + 2);
+        window.draw(t);
+
+        x += w + btnGap;
+    }
+}
+
+// ============================================================
+// Rules Page
+// ============================================================
+
+void Menu::showRulesPage(sf::RenderWindow& window)
+{
+    window.clear(sf::Color(18, 18, 28));
+
+    // --- Title ---
+    sf::Text title("CELLULAR AUTOMATA", font, 28);
+    title.setFillColor(sf::Color(220, 220, 240));
+    title.setStyle(sf::Text::Bold);
+    title.setPosition(windowWidth / 2.f - title.getGlobalBounds().width / 2.f, 8);
+    window.draw(title);
+
+    // Separator
+    sf::RectangleShape sep(sf::Vector2f(windowWidth - 100, 1));
+    sep.setPosition(50, 42);
+    sep.setFillColor(sf::Color(50, 50, 70));
+    window.draw(sep);
+
+    // Active rule + grid info
+    std::string activeStr = rules.name + "  " + rules.getNotation()
+        + "   |   " + std::to_string(windowWidth / cellSize) + "x"
+        + std::to_string(windowHeight / cellSize) + " grid"
+        + "   |   " + speedLabel(simulationSpeed);
+    sf::Text info(activeStr, font, 11);
+    info.setFillColor(sf::Color(80, 180, 100));
+    info.setPosition(windowWidth / 2.f - info.getGlobalBounds().width / 2.f, 50);
+    window.draw(info);
+
+    // --- Subtitle ---
+    sf::Text subtitle("Configure and select a ruleset", font, 11);
+    subtitle.setFillColor(sf::Color(120, 120, 145));
+    subtitle.setPosition(windowWidth / 2.f - subtitle.getGlobalBounds().width / 2.f, 70);
+    window.draw(subtitle);
+
+    // --- Button rows ---
+    // Init mode
+    const char* initLabels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
+    int activeInit = 0;
+    for (int i = 0; i < numInitModes; i++)
+        if (allInitModes[i] == initMode) { activeInit = i; break; }
+    drawButtonRow(window, font, rowY0, "Density:", initLabels, numInitModes, activeInit,
+        sf::Color(35, 55, 90), sf::Color(70, 110, 190));
+
+    // Cell size
+    const char* cellLabels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
+    int activeCell = 0;
+    for (int i = 0; i < numCellSizes; i++)
+        if (allCellSizes[i] == cellSize) { activeCell = i; break; }
+    drawButtonRow(window, font, rowY0 + rowSpacing, "Cell:", cellLabels, numCellSizes, activeCell,
+        sf::Color(55, 35, 85), sf::Color(110, 70, 180));
+
+    // Speed
+    const char* speedLabels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
+    int activeSpeed = findSpeedIndex(simulationSpeed);
+    drawButtonRow(window, font, rowY0 + rowSpacing * 2, "Speed:", speedLabels, numSpeeds, activeSpeed,
+        sf::Color(85, 55, 35), sf::Color(180, 110, 70));
+
+    // --- Separator before list ---
+    sf::RectangleShape sep2(sf::Vector2f(windowWidth - 60, 1));
+    sep2.setPosition(30, listStartY - 6);
+    sep2.setFillColor(sf::Color(45, 45, 60));
+    window.draw(sep2);
+
+    // --- Rule list with category headers ---
+    int totalVisual = (int)visualItems.size();
+    int maxVisible = (windowHeight - listStartY - 28) / itemH;
+
+    if (scrollOffset > totalVisual - maxVisible) scrollOffset = totalVisual - maxVisible;
+    if (scrollOffset < 0) scrollOffset = 0;
+
+    for (int vi = 0; vi < maxVisible && (vi + scrollOffset) < totalVisual; vi++)
     {
-        // Handle different types of events
-        switch (event.type)
+        int idx = vi + scrollOffset;
+        const VisualItem& item = visualItems[idx];
+        float yPos = listStartY + vi * itemH;
+
+        if (item.type == VisualItem::HEADER)
         {
-            case sf::Event::Closed: // The user closed the window
-                window.close(); // Close the window
-                break;
+            // Category header
+            sf::Text hdr(item.label, font, 10);
+            hdr.setFillColor(sf::Color(100, 130, 180));
+            hdr.setStyle(sf::Text::Bold);
+            hdr.setPosition(30, yPos + 4);
+            window.draw(hdr);
 
-            case sf::Event::KeyPressed: // The user pressed a key on the keyboard
-                if (event.key.code == sf::Keyboard::Escape) // The user pressed escape key
-                {
-                    window.close(); // Close the window
-                }
-                else if (event.key.code == sf::Keyboard::M) // The user pressed M key
-                {
-                    this->toggle(); // Toggle the menu using this pointer
-                    paused = this->isShown(); // Pause the simulation if the menu is shown using this pointer
-                }
-                break;
+            sf::RectangleShape hline(sf::Vector2f(windowWidth - 60 - hdr.getGlobalBounds().width - 12, 1));
+            hline.setPosition(38 + hdr.getGlobalBounds().width + 8, yPos + 12);
+            hline.setFillColor(sf::Color(45, 55, 75));
+            window.draw(hline);
+        }
+        else
+        {
+            // Highlight
+            if (idx == selectedIndex) {
+                sf::RectangleShape hl(sf::Vector2f(windowWidth - 50, itemH - 2));
+                hl.setPosition(25, yPos);
+                hl.setFillColor(sf::Color(35, 35, 70));
+                hl.setOutlineColor(sf::Color(65, 65, 130));
+                hl.setOutlineThickness(1);
+                window.draw(hl);
+            }
 
-            case sf::Event::MouseButtonPressed: // The user pressed a mouse button
-                int mouseX = event.mouseButton.x; // Declare and initialize mouseX variable
-                int mouseY = event.mouseButton.y; // Declare and initialize mouseY variable
-                if (event.mouseButton.button == sf::Mouse::Left) // The user pressed left mouse button
-                {
-                    // Get the mouse position relative to the window
+            if (item.type == VisualItem::PRESET) {
+                sf::Text nameText(item.label, font, 13);
+                nameText.setPosition(40, yPos + 2);
+                nameText.setFillColor(idx == selectedIndex ? sf::Color(255, 240, 140) : sf::Color(200, 200, 215));
+                window.draw(nameText);
 
-                    // Check if the mouse position is within the restart text bounds
-                    if (mouseX >= restartText.getGlobalBounds().left && mouseX <= restartText.getGlobalBounds().left + restartText.getGlobalBounds().width && mouseY >= restartText.getGlobalBounds().top && mouseY <= restartText.getGlobalBounds().top + restartText.getGlobalBounds().height)
-                    {
-                        // Restart the simulation and apply the rules chosen by the user in settings
-                        grid.initializeCells();
-                        grid.update(rules);
-                        ::simulationClock.restart(); // Reset the simulationClock
+                sf::Text notation(presets[item.presetIndex].getNotation(), font, 11);
+                notation.setFillColor(sf::Color(85, 160, 110));
+                notation.setPosition(windowWidth - 45 - notation.getGlobalBounds().width, yPos + 3);
+                window.draw(notation);
+            }
+            else {
+                // Custom option
+                sf::Text ct(item.label, font, 13);
+                ct.setPosition(40, yPos + 2);
+                ct.setFillColor(idx == selectedIndex ? sf::Color(255, 240, 140) : sf::Color(160, 160, 230));
+                ct.setStyle(sf::Text::Italic);
+                window.draw(ct);
+            }
+        }
+    }
 
-                        paused = false; // Resume the simulation
-                        this->toggle(); // Hide the menu using this pointer
-                    }
+    // Scroll indicators
+    if (scrollOffset > 0) {
+        sf::Text up("^", font, 12);
+        up.setFillColor(sf::Color(120, 120, 140));
+        up.setPosition(windowWidth - 22, listStartY);
+        window.draw(up);
+    }
+    if (scrollOffset + maxVisible < totalVisual) {
+        sf::Text dn("v", font, 12);
+        dn.setFillColor(sf::Color(120, 120, 140));
+        dn.setPosition(windowWidth - 22, listStartY + (maxVisible - 1) * itemH);
+        window.draw(dn);
+    }
 
-                    // Check if the mouse position is within the resume text bounds
-                    else if (mouseX >= resumeText.getGlobalBounds().left && mouseX <= resumeText.getGlobalBounds().left + resumeText.getGlobalBounds().width &&
-                        mouseY >= resumeText.getGlobalBounds().top && mouseY <= resumeText.getGlobalBounds().top + resumeText.getGlobalBounds().height)
-                    {
-                        // Resume the simulation and hide the menu
-                        paused = false;
-                        this->toggle(); // Hide the menu using this pointer
-                    }
+    // Hint
+    sf::Text hint("Up/Down + Enter  |  Click to select  |  +/- speed  |  Esc quit", font, 10);
+    hint.setFillColor(sf::Color(70, 70, 90));
+    hint.setPosition(windowWidth / 2.f - hint.getGlobalBounds().width / 2.f, windowHeight - 20);
+    window.draw(hint);
 
-                    // Check if the mouse position is within the settings text bounds
-                    else if (mouseX >= settingsText.getGlobalBounds().left && mouseX <= settingsText.getGlobalBounds().left + settingsText.getGlobalBounds().width &&
-                        mouseY >= settingsText.getGlobalBounds().top && mouseY <= settingsText.getGlobalBounds().top + settingsText.getGlobalBounds().height)
-                    {
-                        // Show the settings and hide the menu
-                        settingsShown = true;
-                        this->toggle(); // Hide the menu using this pointer
-                    }
-                }
-                break;
-        } // Add a closing brace for the switch statement
-    } // Add a closing brace for the while loop
-}
-
-void Menu::showSettings(sf::RenderWindow& window) 
-{
-    // Create a rectangle shape to represent the settings background
-    sf::RectangleShape settingsBackground(sf::Vector2f(windowWidth / 2, windowHeight / 2));
-    
-    // Set the position and color of the settings background shape
-    settingsBackground.setPosition(windowWidth / 4, windowHeight / 4);
-    settingsBackground.setFillColor(sf::Color(128, 128, 128));
-
-    // Draw the settings background shape on the window
-    window.draw(settingsBackground);
-
-    // Set the character size and color of the text
-    windowSizeText.setCharacterSize(24);
-    cellSizeText.setCharacterSize(24);
-    simulationSpeedText.setCharacterSize(24);
-    rulesText.setCharacterSize(24);
-
-    windowSizeText.setFillColor(sf::Color::White);
-    cellSizeText.setFillColor(sf::Color::White);
-    simulationSpeedText.setFillColor(sf::Color::White);
-    rulesText.setFillColor(sf::Color::White);
-
-    // Set the origin of the text to the center
-    windowSizeText.setOrigin(windowSizeText.getLocalBounds().width / 2, windowSizeText.getLocalBounds().height / 2);
-    cellSizeText.setOrigin(cellSizeText.getLocalBounds().width / 2, cellSizeText.getLocalBounds().height / 2);
-    simulationSpeedText.setOrigin(simulationSpeedText.getLocalBounds().width / 2, simulationSpeedText.getLocalBounds().height / 2);
-    rulesText.setOrigin(rulesText.getLocalBounds().width / 2, rulesText.getLocalBounds().height / 2);
-
-    // Set the position of the text relative to the settings background
-    windowSizeText.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y / 8);
-    cellSizeText.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 3 / 8);
-    simulationSpeedText.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 5 / 8);
-    rulesText.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 7 / 8);
-
-    // Draw the text on the window
-    window.draw(windowSizeText);
-    window.draw(cellSizeText);
-    window.draw(rulesText);
-
-    // Create text objects to represent the settings values
-    sf::Text windowSizeValue(std::to_string(windowWidth) + " x " + std::to_string(windowHeight), font);
-    sf::Text cellSizeValue(std::to_string(cellSize), font);
-    sf::Text simulationSpeedValue(std::to_string(simulationSpeed), font);
-    sf::Text rulesValue("Conway", font); // Use a placeholder value for now
-
-    // Set the character size and color of the text
-    windowSizeValue.setCharacterSize(24);
-    cellSizeValue.setCharacterSize(24);
-    simulationSpeedValue.setCharacterSize(24);
-    rulesValue.setCharacterSize(24);
-
-    windowSizeValue.setFillColor(sf::Color::White);
-    cellSizeValue.setFillColor(sf::Color::White);
-    simulationSpeedValue.setFillColor(sf::Color::White);
-    rulesValue.setFillColor(sf::Color::White);
-
-    // Set the origin of the text to the center
-    windowSizeValue.setOrigin(windowSizeValue.getLocalBounds().width / 2, windowSizeValue.getLocalBounds().height / 2);
-    cellSizeValue.setOrigin(cellSizeValue.getLocalBounds().width / 2, cellSizeValue.getLocalBounds().height / 2);
-    simulationSpeedValue.setOrigin(simulationSpeedValue.getLocalBounds().width / 2, simulationSpeedValue.getLocalBounds().height / 2);
-    rulesValue.setOrigin(rulesValue.getLocalBounds().width / 2, rulesValue.getLocalBounds().height / 2);
-
-    // Set the position of the text relative to the settings background
-    windowSizeValue.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x * 3 / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y / 8);
-    cellSizeValue.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x * 3 / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 3 / 8);
-    simulationSpeedValue.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x * 3 / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 5 / 8);
-    rulesValue.setPosition(settingsBackground.getPosition().x + settingsBackground.getSize().x * 3 / 4, settingsBackground.getPosition().y + settingsBackground.getSize().y * 7 / 8);
-
-    // Draw the text on the window
-    window.draw(windowSizeValue);
-    window.draw(cellSizeValue);
-    window.draw(simulationSpeedValue);
-    window.draw(rulesValue);
-
-    // Display the window
     window.display();
 }
 
-void Menu::handleSettingsInput(sf::RenderWindow& window) // Remove unused parameters
+void Menu::handleRulesInput(sf::RenderWindow& window)
 {
-    // Declare an event variable to store events from the window
-    sf::Event event;
+    int totalVisual = (int)visualItems.size();
+    int maxVisible = (windowHeight - listStartY - 28) / itemH;
 
-    // Poll events from the window until there are none left
+    sf::Event event;
     while (window.pollEvent(event))
     {
-        // Handle different types of events
-        switch (event.type)
+        if (event.type == sf::Event::Closed) { window.close(); return; }
+        if (event.type == sf::Event::Resized)
+            window.setView(sf::View(sf::FloatRect(0, 0, windowWidth, windowHeight)));
+
+        if (event.type == sf::Event::KeyPressed)
         {
-            case sf::Event::Closed: // The user closed the window
-                window.close(); // Close the window
-                break;
+            if (event.key.code == sf::Keyboard::Escape)
+                window.close();
+            else if (event.key.code == sf::Keyboard::M) {
+                toggle(); paused = isShown();
+            }
+            else if (event.key.code == sf::Keyboard::Up) {
+                moveSelection(-1);
+                if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+                if (selectedIndex >= scrollOffset + maxVisible) scrollOffset = selectedIndex - maxVisible + 1;
+                // Also scroll past any headers above
+                while (scrollOffset > 0 && visualItems[scrollOffset].type == VisualItem::HEADER
+                       && scrollOffset > selectedIndex - 1)
+                    scrollOffset--;
+            }
+            else if (event.key.code == sf::Keyboard::Down) {
+                moveSelection(1);
+                if (selectedIndex >= scrollOffset + maxVisible) scrollOffset = selectedIndex - maxVisible + 1;
+                if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+            }
+            else if (event.key.code == sf::Keyboard::Return) {
+                const auto& item = visualItems[selectedIndex];
+                if (item.type == VisualItem::PRESET) selectPreset(item.presetIndex);
+                else if (item.type == VisualItem::CUSTOM_OPT) currentPage = MenuPage::CUSTOM;
+            }
+            else if (event.key.code == sf::Keyboard::Equal) {
+                int i = findSpeedIndex(simulationSpeed);
+                if (i > 0) simulationSpeed = allSpeeds[i - 1];
+            }
+            else if (event.key.code == sf::Keyboard::Hyphen) {
+                int i = findSpeedIndex(simulationSpeed);
+                if (i < numSpeeds - 1) simulationSpeed = allSpeeds[i + 1];
+            }
+        }
 
-            case sf::Event::KeyPressed: // The user pressed a key on the keyboard
-                if (event.key.code == sf::Keyboard::Escape) // The user pressed escape key
-                {
-                    window.close(); // Close the window
+        if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
+        {
+            sf::Vector2f pos = window.mapPixelToCoords(
+                sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
+            int mx = (int)pos.x, my = (int)pos.y;
+
+            // --- Button row clicks ---
+            // Recompute button positions for each row
+            auto checkRow = [&](int y, int n, auto callback) {
+                if (my < y || my > y + btnH) return;
+                // Measure buttons to find positions
+                float totalW = 0;
+                float ws[12];
+                for (int i = 0; i < n; i++) {
+                    // We need the actual labels... handled per-row below
                 }
-                else if (event.key.code == sf::Keyboard::M) // The user pressed M key
-                {
-                    this->toggle(); // Toggle the menu using this pointer
-                    paused = this->isShown(); // Pause the simulation if the menu is shown using this pointer
-                    settingsShown = false; // Hide the settings using this pointer
+                (void)totalW; (void)ws;
+                callback(mx, my);
+            };
+            (void)checkRow;
+
+            // Init mode row
+            {
+                const char* labels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
+                BtnLayout bl = layoutButtons(font, labels, numInitModes);
+                int y = rowY0;
+                if (my >= y && my <= y + btnH) {
+                    for (int i = 0; i < numInitModes; i++)
+                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
+                            initMode = allInitModes[i];
                 }
-                break;
+            }
 
-            case sf::Event::MouseButtonPressed: // The user pressed a mouse button
-                if (event.mouseButton.button == sf::Mouse::Left) // The user pressed left mouse button
-                {
-                    // Get the mouse position relative to the window
-                    int mouseX = event.mouseButton.x;
-                    int mouseY = event.mouseButton.y;
-
-                    // TODO: Implement a way to change the settings values by clicking on them and entering new values
-
-                    /*
-                    Example pseudocode:
-
-                    if (mouseX and mouseY are within the bounds of windowSizeValue) {
-                        prompt for new width and height values;
-                        validate and update windowWidth and windowHeight variables;
-                        resize and reinitialize grid;
-                        resize and clear window;
-                    }
-
-                    if (mouseX and mouseY are within the bounds of cellSizeValue) {
-                        prompt for new cell size value;
-                        validate and update cellSize variable;
-                        recalculate and update gridWidth and gridHeight variables;
-                        resize and reinitialize grid 
-                        prompt for new cell size value;
-                        validate and update cellSize variable;
-                        recalculate and update gridWidth and gridHeight variables;
-                        resize and reinitialize grid;
-                        resize and clear window;
-                    }
-
-                    if (mouseX and mouseY are within the bounds of simulationSpeedValue) {
-                        prompt for new simulation speed value;
-                        validate and update simulationSpeed variable;
-                    }
-
-                    if (mouseX and mouseY are within the bounds of rulesValue) {
-                        prompt for new rules choice from a list of options;
-                        validate and update rules object with the chosen rule;
-                    }
-                    */
+            // Cell size row
+            {
+                const char* labels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
+                BtnLayout bl = layoutButtons(font, labels, numCellSizes);
+                int y = rowY0 + rowSpacing;
+                if (my >= y && my <= y + btnH) {
+                    for (int i = 0; i < numCellSizes; i++)
+                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
+                            cellSize = allCellSizes[i];
                 }
-                break;
+            }
 
-            default: // Other types of events are ignored
-                break;
+            // Speed row
+            {
+                const char* labels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
+                BtnLayout bl = layoutButtons(font, labels, numSpeeds);
+                int y = rowY0 + rowSpacing * 2;
+                if (my >= y && my <= y + btnH) {
+                    for (int i = 0; i < numSpeeds; i++)
+                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
+                            simulationSpeed = allSpeeds[i];
+                }
+            }
+
+            // Rule list clicks
+            if (my >= listStartY && my < listStartY + maxVisible * itemH) {
+                int clickedVi = (my - listStartY) / itemH + scrollOffset;
+                if (clickedVi >= 0 && clickedVi < totalVisual) {
+                    const auto& item = visualItems[clickedVi];
+                    if (item.type == VisualItem::PRESET) {
+                        selectedIndex = clickedVi;
+                        selectPreset(item.presetIndex);
+                    } else if (item.type == VisualItem::CUSTOM_OPT) {
+                        selectedIndex = clickedVi;
+                        currentPage = MenuPage::CUSTOM;
+                    }
+                    // HEADER clicks are ignored
+                }
+            }
+        }
+
+        if (event.type == sf::Event::MouseWheelScrolled) {
+            scrollOffset -= (int)event.mouseWheelScroll.delta * 2;
+            if (scrollOffset < 0) scrollOffset = 0;
+            if (scrollOffset > totalVisual - maxVisible) scrollOffset = totalVisual - maxVisible;
+            if (scrollOffset < 0) scrollOffset = 0;
+        }
+    }
+}
+
+// ============================================================
+// Custom Rules Page
+// ============================================================
+
+void Menu::showCustomPage(sf::RenderWindow& window)
+{
+    window.clear(sf::Color(18, 18, 28));
+
+    sf::Text title("CUSTOM RULES", font, 26);
+    title.setFillColor(sf::Color(220, 220, 240));
+    title.setStyle(sf::Text::Bold);
+    title.setPosition(windowWidth / 2.f - title.getGlobalBounds().width / 2.f, 25);
+    window.draw(title);
+
+    sf::RectangleShape sep(sf::Vector2f(windowWidth - 100, 1));
+    sep.setPosition(50, 58);
+    sep.setFillColor(sf::Color(50, 50, 70));
+    window.draw(sep);
+
+    // Current notation
+    std::string notation = "B";
+    for (int i = 0; i <= 8; i++) if (customBirth[i]) notation += std::to_string(i);
+    notation += " / S";
+    for (int i = 0; i <= 8; i++) if (customSurvival[i]) notation += std::to_string(i);
+
+    sf::Text notationText(notation, font, 22);
+    notationText.setFillColor(sf::Color(90, 210, 100));
+    notationText.setPosition(windowWidth / 2.f - notationText.getGlobalBounds().width / 2.f, 75);
+    window.draw(notationText);
+
+    // Descriptions
+    sf::Text desc("Birth: neighbor count that makes a dead cell come alive", font, 11);
+    desc.setFillColor(sf::Color(130, 130, 150));
+    desc.setPosition(windowWidth / 2.f - desc.getGlobalBounds().width / 2.f, 120);
+    window.draw(desc);
+
+    sf::Text desc2("Survival: neighbor count that lets a living cell survive", font, 11);
+    desc2.setFillColor(sf::Color(130, 130, 150));
+    desc2.setPosition(windowWidth / 2.f - desc2.getGlobalBounds().width / 2.f, 136);
+    window.draw(desc2);
+
+    float numStartX = 280;
+    float numSpacing = 48;
+
+    // Birth row
+    sf::Text birthLabel("Birth:", font, 18);
+    birthLabel.setFillColor(sf::Color(180, 200, 220));
+    birthLabel.setPosition(110, 185);
+    window.draw(birthLabel);
+
+    for (int i = 0; i <= 8; i++) {
+        float xPos = numStartX + i * numSpacing;
+        sf::RectangleShape box(sf::Vector2f(34, 34));
+        box.setPosition(xPos - 4, 182);
+        box.setFillColor(customBirth[i] ? sf::Color(25, 90, 25) : sf::Color(40, 40, 50));
+        box.setOutlineColor(customBirth[i] ? sf::Color(50, 180, 50) : sf::Color(65, 65, 75));
+        box.setOutlineThickness(1);
+        window.draw(box);
+
+        sf::Text num(std::to_string(i), font, 18);
+        num.setFillColor(customBirth[i] ? sf::Color(90, 240, 90) : sf::Color(90, 90, 100));
+        num.setPosition(xPos + 5, 186);
+        window.draw(num);
+    }
+
+    // Survival row
+    sf::Text survLabel("Survival:", font, 18);
+    survLabel.setFillColor(sf::Color(180, 200, 220));
+    survLabel.setPosition(110, 248);
+    window.draw(survLabel);
+
+    for (int i = 0; i <= 8; i++) {
+        float xPos = numStartX + i * numSpacing;
+        sf::RectangleShape box(sf::Vector2f(34, 34));
+        box.setPosition(xPos - 4, 245);
+        box.setFillColor(customSurvival[i] ? sf::Color(25, 25, 90) : sf::Color(40, 40, 50));
+        box.setOutlineColor(customSurvival[i] ? sf::Color(50, 50, 180) : sf::Color(65, 65, 75));
+        box.setOutlineThickness(1);
+        window.draw(box);
+
+        sf::Text num(std::to_string(i), font, 18);
+        num.setFillColor(customSurvival[i] ? sf::Color(90, 90, 240) : sf::Color(90, 90, 100));
+        num.setPosition(xPos + 5, 249);
+        window.draw(num);
+    }
+
+    // Info line
+    std::string infoStr = "Density: " + std::string(initModeName(initMode))
+        + "  |  Cell: " + std::to_string(cellSize) + "px"
+        + "  |  Grid: " + std::to_string(windowWidth / cellSize) + "x" + std::to_string(windowHeight / cellSize)
+        + "  |  Speed: " + speedLabel(simulationSpeed);
+    sf::Text infoText(infoStr, font, 11);
+    infoText.setFillColor(sf::Color(120, 170, 220));
+    infoText.setPosition(windowWidth / 2.f - infoText.getGlobalBounds().width / 2.f, 310);
+    window.draw(infoText);
+
+    // Apply button
+    sf::RectangleShape applyBtn(sf::Vector2f(200, 38));
+    applyBtn.setPosition(windowWidth / 2.f - 100, 350);
+    applyBtn.setFillColor(sf::Color(25, 70, 25));
+    applyBtn.setOutlineColor(sf::Color(50, 140, 50));
+    applyBtn.setOutlineThickness(1);
+    window.draw(applyBtn);
+    sf::Text applyText("Apply & Start", font, 16);
+    applyText.setFillColor(sf::Color(90, 240, 90));
+    applyText.setPosition(windowWidth / 2.f - applyText.getGlobalBounds().width / 2.f, 358);
+    window.draw(applyText);
+
+    // Back button
+    sf::RectangleShape backBtn(sf::Vector2f(200, 38));
+    backBtn.setPosition(windowWidth / 2.f - 100, 405);
+    backBtn.setFillColor(sf::Color(50, 40, 40));
+    backBtn.setOutlineColor(sf::Color(120, 85, 85));
+    backBtn.setOutlineThickness(1);
+    window.draw(backBtn);
+    sf::Text backText("Back", font, 16);
+    backText.setFillColor(sf::Color(200, 160, 160));
+    backText.setPosition(windowWidth / 2.f - backText.getGlobalBounds().width / 2.f, 413);
+    window.draw(backText);
+
+    sf::Text hint("Click numbers to toggle  |  Settings are on the rules page", font, 10);
+    hint.setFillColor(sf::Color(70, 70, 90));
+    hint.setPosition(windowWidth / 2.f - hint.getGlobalBounds().width / 2.f, windowHeight - 20);
+    window.draw(hint);
+
+    window.display();
+}
+
+void Menu::handleCustomInput(sf::RenderWindow& window)
+{
+    float numStartX = 280;
+    float numSpacing = 48;
+
+    sf::Event event;
+    while (window.pollEvent(event))
+    {
+        if (event.type == sf::Event::Closed) { window.close(); return; }
+        if (event.type == sf::Event::Resized)
+            window.setView(sf::View(sf::FloatRect(0, 0, windowWidth, windowHeight)));
+
+        if (event.type == sf::Event::KeyPressed) {
+            if (event.key.code == sf::Keyboard::Escape) currentPage = MenuPage::RULES;
+            else if (event.key.code == sf::Keyboard::M) { toggle(); paused = isShown(); }
+            else if (event.key.code == sf::Keyboard::Return) applyCustomRule();
+        }
+
+        if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
+        {
+            sf::Vector2f pos = window.mapPixelToCoords(
+                sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
+            int mx = (int)pos.x, my = (int)pos.y;
+
+            // Birth toggles
+            for (int i = 0; i <= 8; i++) {
+                float xPos = numStartX + i * numSpacing - 4;
+                if (mx >= xPos && mx <= xPos + 34 && my >= 182 && my <= 216)
+                    customBirth[i] = !customBirth[i];
+            }
+
+            // Survival toggles
+            for (int i = 0; i <= 8; i++) {
+                float xPos = numStartX + i * numSpacing - 4;
+                if (mx >= xPos && mx <= xPos + 34 && my >= 245 && my <= 279)
+                    customSurvival[i] = !customSurvival[i];
+            }
+
+            // Apply
+            if (mx >= windowWidth / 2 - 100 && mx <= windowWidth / 2 + 100 && my >= 350 && my <= 388)
+                applyCustomRule();
+            // Back
+            if (mx >= windowWidth / 2 - 100 && mx <= windowWidth / 2 + 100 && my >= 405 && my <= 443)
+                currentPage = MenuPage::RULES;
         }
     }
 }

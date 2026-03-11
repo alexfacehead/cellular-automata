@@ -1,11 +1,11 @@
 #include "Cell.h"
 
-Cell::Cell() : m_alive(false), m_neighbors(0), m_x(0), m_y(0)
+Cell::Cell() : m_alive(false), m_neighbors(0), m_x(0), m_y(0), m_age(0)
 {
 }
 
 Cell::Cell(int x, int y, bool initialState)
-    : m_alive(initialState), m_neighbors(0), m_x(x), m_y(y)
+    : m_alive(initialState), m_neighbors(0), m_x(x), m_y(y), m_age(0)
 {
 }
 
@@ -52,4 +52,14 @@ int Cell::getY() const
 void Cell::setNeighbors(int neighbors)
 {
     m_neighbors = neighbors;
+}
+
+int Cell::getAge() const
+{
+    return m_age;
+}
+
+void Cell::setAge(int age)
+{
+    m_age = age;
 }

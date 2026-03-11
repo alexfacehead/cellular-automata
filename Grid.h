@@ -21,8 +21,9 @@ public:
     void update(const RuleSet& ruleSet); // Modify the function signature to accept a RuleSet reference
 
     void initializeCells();
-    void initializeCellsConway();
-    void initializeCellsCustom();
+    void initializeCellsWithDensity(int densityPercent);
+    void initializeCellsSeed();
+    void initializeCellsCluster();
     void initializeCellsPattern(const std::vector<std::vector<bool>>& pattern);
 
 private:

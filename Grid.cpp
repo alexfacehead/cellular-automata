@@ -48,20 +48,24 @@ void Grid::resize(int width, int height)
 {
     m_width = width;
     m_height = height;
+    m_cells.assign(m_width, std::vector<Cell>(m_height));
 }
 
 void Grid::update(const RuleSet& ruleSet) {
-    // Create a temporary grid to store the updated cell states
     std::vector<std::vector<Cell>> updatedCells = m_cells;
 
     for (int x = 0; x < m_width; ++x) {
         for (int y = 0; y < m_height; ++y) {
-            // Apply the rules to the cell at (x, y) and store the result in the temporary grid
-            updatedCells[x][y].setAlive(ruleSet.applyRuleChosen(*this, x, y));
+            bool wasAlive = m_cells[x][y].isAlive();
+            bool nowAlive = ruleSet.applyRuleChosen(*this, x, y);
+            updatedCells[x][y].setAlive(nowAlive);
+            if (nowAlive)
+                updatedCells[x][y].setAge(wasAlive ? m_cells[x][y].getAge() + 1 : 1);
+            else
+                updatedCells[x][y].setAge(0);
         }
     }
 
-    // Replace the current grid with the updated grid
     m_cells = updatedCells;
 }
 
@@ -81,35 +85,34 @@ void Grid::initializeCells()
     }
 }
 
-// Conways game of life initial rules
-void Grid::initializeCellsConway()
+void Grid::initializeCellsWithDensity(int densityPercent)
 {
     m_cells.resize(m_width, std::vector<Cell>(m_height));
     for (int x = 0; x < m_width; ++x)
     {
         for (int y = 0; y < m_height; ++y)
         {
-            // Set the cell state to a random value (true or false)
-            bool state = rand() % 2;
+            bool state = (rand() % 100) < densityPercent;
             m_cells[x][y].setAlive(state);
         }
     }
 }
 
-// Random rule set for testing
-void Grid::initializeCellsCustom()
+void Grid::initializeCellsSeed()
 {
-    m_cells.resize(m_width, std::vector<Cell>(m_height));
-    // Customize the initial state of cells as desired
-    // For example, create a pattern of cells in the center of the grid
-    int centerX = m_width / 2;
-    int centerY = m_height / 2;
-    
-    m_cells[centerX][centerY].setAlive(true);
-    m_cells[centerX + 1][centerY].setAlive(true);
-    m_cells[centerX][centerY + 1].setAlive(true);
-    m_cells[centerX - 1][centerY + 1].setAlive(true);
-    m_cells[centerX + 1][centerY + 1].setAlive(true);
+    m_cells.assign(m_width, std::vector<Cell>(m_height));
+    m_cells[m_width / 2][m_height / 2].setAlive(true);
+}
+
+void Grid::initializeCellsCluster()
+{
+    m_cells.assign(m_width, std::vector<Cell>(m_height));
+    int cx = m_width / 2;
+    int cy = m_height / 2;
+    for (int x = cx - 3; x <= cx + 3; ++x)
+        for (int y = cy - 3; y <= cy + 3; ++y)
+            if (x >= 0 && x < m_width && y >= 0 && y < m_height)
+                m_cells[x][y].setAlive(rand() % 2);
 }
 
 

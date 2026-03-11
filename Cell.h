@@ -15,10 +15,13 @@ public:
     void setNeighbors(int neighbors);
     int getX() const;
     int getY() const;
+    int getAge() const;
+    void setAge(int age);
 
 private:
     bool m_alive;
     int m_neighbors;
     int m_x;
     int m_y;
+    int m_age;
 };

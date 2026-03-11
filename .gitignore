@@ -1,0 +1,13 @@
+# Compiled binary
+cellular_automata
+
+# Build artifacts
+*.o
+*.dSYM/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

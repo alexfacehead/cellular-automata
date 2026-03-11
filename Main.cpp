@@ -1,215 +1,234 @@
 #include <iostream>
-#include <filesystem>
 #include <vector>
 #include <string>
 #include <ctime>
 #include <cstdlib>
-#include <stdexcept>
 
-// Graphical library includes
 #include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/System.hpp>
 
-// Custom includes
 #include "Cell.h"
 #include "Grid.h"
 #include "RuleSet.h"
 #include "Menu.h"
-#include "Settings.h"
 
-// Function prototypes
-void initializeGrid(Grid& grid, int width, int height, int cellSize);
 void applyRules(Grid& grid, const RuleSet& rules);
-void render(sf::RenderWindow& window, const Grid& grid);
-void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize, Menu& menu);
+void render(sf::RenderWindow& window, const Grid& grid, const RuleSet& rules);
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, Menu& menu);
 
-// static global vars
-// Define the global variables in Main.cpp
-int simulationSpeed = 0.15f;
+float simulationSpeed = 0.15f;
 bool paused = false;
-bool settingsShown = false;
-Settings settings;
-
-sf::Font font;
-// Create text objects to represent the menu options
-sf::Text restartText("Restart Simulation & Apply Rules", font);
-sf::Text resumeText("Resume Simulation", font);
-sf::Text settingsText("Settings", font);
-// Create a clock to control the simulation speed
+int cellSize = 10;
 sf::Clock simulationClock;
 
 int main()
 {
-    int gridWidth = windowWidth / cellSize; // Make this variable non-constant so it can be changed in settings
-    int gridHeight = windowHeight / cellSize; // Make this variable non-constant so it can be changed in settings
-    const std::string windowTitle = "2D Cellular Automata";
-
-    // Custom init rules
-    const std::vector<std::vector<bool>> customPattern = {
-    {false, true, false},
-    {true, true, true},
-    {false, true, false}
-    };
-
-    // Initialize random seed
     std::srand(static_cast<unsigned>(std::time(0)));
 
-    // Create the window
-    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), windowTitle);
+    sf::RenderWindow window(sf::VideoMode(windowWidth, windowHeight), "2D Cellular Automata");
+    window.setView(sf::View(sf::FloatRect(0, 0, windowWidth, windowHeight)));
 
-    // Create the grid and rules
-    Grid grid(gridWidth, gridHeight); // Use the constructor that takes width and height parameters
+    Grid grid(windowWidth / cellSize, windowHeight / cellSize);
     RuleSet rules;
-    // Create a Menu instance
     Menu menu(grid, rules);
-    // Initialize the grid with a custom pattern
-    grid.initializeCellsPattern(customPattern);
     menu.toggle();
 
-    // Main loop
     while (window.isOpen())
     {
-        if (!menu.isShown() && !settingsShown) {
-            // Handle input
-            handleInput(window, grid, rules, cellSize, menu);
-
-            // Apply rules only if the simulation is not paused and enough time has passed since the last update
-            if (!paused && simulationClock.getElapsedTime().asSeconds() >= simulationSpeed) { // Use ::simulationClock to access the global simulationClock object
-                applyRules(grid, rules);
-                ::simulationClock.restart(); // Reset the simulationClock
-            }
-        }
-        else if (menu.isShown()) {
-            // Handle menu input
+        if (menu.isShown()) {
             menu.handleMenuInput(window);
-
-            // Show menu only if the settings are not shown
-            if (!settingsShown) {
+            if (menu.isShown()) {
                 menu.showMenu(window);
             }
-        }
-        else if (settingsShown) {
-            // Handle settings input
-            menu.handleSettingsInput(window);
+        } else {
+            handleInput(window, grid, rules, menu);
 
-            // Show settings only if the menu is shown
-            if (menu.isShown()) {
-                menu.showSettings(window);
+            if (!paused && simulationClock.getElapsedTime().asSeconds() >= simulationSpeed) {
+                applyRules(grid, rules);
+                simulationClock.restart();
             }
-        }
 
-        // Render only if the menu and settings are not shown
-        if (!menu.isShown() && !settingsShown) {
             window.clear();
-            render(window, grid);
+            render(window, grid, rules);
             window.display();
         }
-        
     }
 
     return 0;
 }
 
-// This function is not needed as the grid constructor and initializer methods do the same thing
-/*
-void initializeGrid(Grid& grid, int width, int height, int cellSize)
-{
+static const float speedSteps[] = { 0.02f, 0.05f, 0.08f, 0.10f, 0.15f, 0.25f, 0.40f };
+static const int numSpeedSteps = 7;
+
+static int findSpeed(float s) {
+    int best = 0; float d = 999.f;
+    for (int i = 0; i < numSpeedSteps; i++) {
+        float dd = std::abs(speedSteps[i] - s);
+        if (dd < d) { d = dd; best = i; }
+    }
+    return best;
 }
-*/
 
 void applyRules(Grid& grid, const RuleSet& rules)
 {
-    // Use the update method of the grid class to apply the rules chosen by the user in settings
     grid.update(rules);
 }
 
-void render(sf::RenderWindow& window, const Grid& grid)
+sf::Font& getFont()
 {
-    // Create a rectangle shape to represent a cell
-    sf::RectangleShape cellShape(sf::Vector2f(cellSize - 1, cellSize - 1));
-
-    // Loop through the cells of the grid and draw them according to their state
-    for (int x = 0; x < grid.getWidth(); ++x)
-    {
-        for (int y = 0; y < grid.getHeight(); ++y)
-        {
-            // Set the position of the cell shape according to the cell coordinates
-            cellShape.setPosition(x * cellSize + 1, y * cellSize + 1);
-
-            // Set the color of the cell shape according to the cell state (alive or dead)
-            if (grid.getCell(x, y).isAlive())
-            {
-                cellShape.setFillColor(sf::Color::White);
-            }
-            else
-            {
-                cellShape.setFillColor(sf::Color::Black);
-            }
-
-            // Draw the cell shape on the window
-            window.draw(cellShape);
-        }
+    static sf::Font font;
+    static bool loaded = false;
+    if (!loaded) {
+        font.loadFromFile("resources/arial.ttf");
+        loaded = true;
     }
+    return font;
 }
 
-void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, int cellSize, Menu& menu)
+static sf::Color ageToColor(int age)
 {
-    // Declare an event variable to store events from the window
-    sf::Event event;
+    if (age <= 0) return sf::Color::Black;
+    if (age > 80) age = 80;
 
-    // Poll events from the window until there are none left
+    // white → cyan → blue → purple → deep magenta
+    if (age <= 3) {
+        // white → cyan
+        float t = (age - 1) / 2.f;
+        return sf::Color(255 - (int)(255 * t), 255, 255);
+    }
+    if (age <= 15) {
+        // cyan → blue
+        float t = (age - 3) / 12.f;
+        return sf::Color(0, 255 - (int)(180 * t), 255);
+    }
+    if (age <= 40) {
+        // blue → purple
+        float t = (age - 15) / 25.f;
+        return sf::Color((int)(160 * t), 75 - (int)(45 * t), 255);
+    }
+    // purple → deep magenta
+    float t = (age - 40) / 40.f;
+    return sf::Color(160 + (int)(40 * t), 30 - (int)(15 * t), 255 - (int)(35 * t));
+}
+
+void render(sf::RenderWindow& window, const Grid& grid, const RuleSet& rules)
+{
+    static sf::Image image;
+    static sf::Texture texture;
+    static sf::Sprite sprite;
+    static int lastW = 0, lastH = 0;
+
+    int w = grid.getWidth();
+    int h = grid.getHeight();
+
+    if (w != lastW || h != lastH) {
+        image.create(w, h, sf::Color::Black);
+        texture.create(w, h);
+        sprite.setTexture(texture, true);
+        lastW = w;
+        lastH = h;
+    }
+
+    for (int x = 0; x < w; x++)
+        for (int y = 0; y < h; y++)
+            image.setPixel(x, y, ageToColor(grid.getCell(x, y).getAge()));
+
+    texture.update(image);
+    sprite.setScale((float)windowWidth / w, (float)windowHeight / h);
+    window.draw(sprite);
+
+    // End button overlay
+    sf::RectangleShape endBtn(sf::Vector2f(60, 26));
+    endBtn.setPosition(windowWidth - 68, 8);
+    endBtn.setFillColor(sf::Color(80, 50, 30));
+    endBtn.setOutlineColor(sf::Color(180, 120, 60));
+    endBtn.setOutlineThickness(1);
+    window.draw(endBtn);
+
+    sf::Text endText("End", getFont(), 14);
+    endText.setFillColor(sf::Color(255, 220, 180));
+    endText.setPosition(windowWidth - 52, 12);
+    window.draw(endText);
+
+    // HUD - top left info bar
+    char speedBuf[16];
+    std::snprintf(speedBuf, sizeof(speedBuf), "%.2fs", simulationSpeed);
+    std::string hudStr = rules.name + "  " + rules.getNotation()
+        + "   |   " + speedBuf + "/step";
+    if (paused) hudStr += "   [PAUSED]";
+
+    sf::Text hudText(hudStr, getFont(), 11);
+    float hudW = hudText.getGlobalBounds().width + 16;
+    sf::RectangleShape hudBg(sf::Vector2f(hudW, 20));
+    hudBg.setPosition(0, 0);
+    hudBg.setFillColor(sf::Color(0, 0, 0, 150));
+    window.draw(hudBg);
+
+    hudText.setFillColor(sf::Color(170, 180, 200));
+    hudText.setPosition(8, 3);
+    window.draw(hudText);
+}
+
+void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, Menu& menu)
+{
+    sf::Event event;
     while (window.pollEvent(event))
     {
-        // Handle different types of events
         switch (event.type)
         {
-            case sf::Event::Closed: // The user closed the window
-                window.close(); // Close the window
+            case sf::Event::Closed:
+                window.close();
                 break;
 
-            case sf::Event::KeyPressed: // The user pressed a key on the keyboard
-                if (event.key.code == sf::Keyboard::Escape) // The user pressed escape key
-                {
-                    window.close(); // Close the window
+            case sf::Event::Resized:
+                window.setView(sf::View(sf::FloatRect(0, 0, windowWidth, windowHeight)));
+                break;
+
+            case sf::Event::KeyPressed:
+                if (event.key.code == sf::Keyboard::Escape)
+                    window.close();
+                else if (event.key.code == sf::Keyboard::R)
+                    grid.initializeCells();
+                else if (event.key.code == sf::Keyboard::P)
+                    paused = !paused;
+                else if (event.key.code == sf::Keyboard::M) {
+                    menu.toggle();
+                    paused = menu.isShown();
                 }
-                else if (event.key.code == sf::Keyboard::R) // The user pressed R key
-                {
-                    grid.initializeCells(); // Reinitialize the grid with random states
+                else if (event.key.code == sf::Keyboard::Equal) {
+                    int i = findSpeed(simulationSpeed);
+                    if (i > 0) simulationSpeed = speedSteps[i - 1];
                 }
-                else if (event.key.code == sf::Keyboard::P) // The user pressed P key
-                {
-                    paused = !paused; // Toggle the paused flag
-                }
-                else if (event.key.code == sf::Keyboard::M) // The user pressed M key
-                {
-                    menu.toggle(); // Toggle the menu visibility using the Menu class method
-                    paused = menu.isShown(); // Pause the simulation if the menu is shown
+                else if (event.key.code == sf::Keyboard::Hyphen) {
+                    int i = findSpeed(simulationSpeed);
+                    if (i < numSpeedSteps - 1) simulationSpeed = speedSteps[i + 1];
                 }
                 break;
 
-            case sf::Event::MouseButtonPressed: // The user pressed a mouse button
-                if (event.mouseButton.button == sf::Mouse::Left) // The user pressed left mouse button
+            case sf::Event::MouseButtonPressed:
+                if (event.mouseButton.button == sf::Mouse::Left)
                 {
-                    // Get the mouse position relative to the window
-                    int mouseX = event.mouseButton.x;
-                    int mouseY = event.mouseButton.y;
+                    sf::Vector2f pos = window.mapPixelToCoords(
+                        sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
+                    int mx = (int)pos.x;
+                    int my = (int)pos.y;
 
-                    // Calculate the cell coordinates corresponding to the mouse position
-                    int cellX = mouseX / cellSize;
-                    int cellY = mouseY / cellSize;
-
-                    // Check if the cell coordinates are within the grid boundaries
-                    if (cellX >= 0 && cellX < grid.getWidth() && cellY >= 0 && cellY < grid.getHeight())
-                    {
-                        // Toggle the state of the cell at the mouse position
-                        bool currentState = grid.getCell(cellX, cellY).isAlive();
-                        grid.setCell(cellX, cellY, !currentState);
+                    // End button check
+                    if (mx >= windowWidth - 68 && mx <= windowWidth - 8 && my >= 8 && my <= 34) {
+                        menu.toggle();
+                        paused = true;
+                        break;
                     }
+
+                    int cellX = mx / cellSize;
+                    int cellY = my / cellSize;
+                    if (cellX >= 0 && cellX < grid.getWidth() && cellY >= 0 && cellY < grid.getHeight())
+                        grid.setCell(cellX, cellY, !grid.getCell(cellX, cellY).isAlive());
                 }
                 break;
 
-            default: // Other types of events are ignored
+            default:
                 break;
         }
     }
