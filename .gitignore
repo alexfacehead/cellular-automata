@@ -13,6 +13,11 @@ cellular_automata.exe
 saved_configs.txt
 settings.txt
 
+# Release artifacts
+*.app/
+*.dmg
+*.zip
+
 # IDE
 .vscode/
 .idea/

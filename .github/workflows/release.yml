@@ -1,0 +1,195 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SFML
+        run: brew install sfml@2
+
+      - name: Build release
+        run: |
+          SFML_LIB="/opt/homebrew/opt/sfml@2/lib"
+          SFML_INC="/opt/homebrew/opt/sfml@2/include"
+          FREETYPE_LIB="/opt/homebrew/opt/freetype/lib"
+          LIBPNG_LIB="/opt/homebrew/opt/libpng/lib"
+
+          # Compile
+          g++ -std=c++17 -O2 \
+            -I"${SFML_INC}" -L"${SFML_LIB}" \
+            -lsfml-graphics -lsfml-window -lsfml-system \
+            -Wl,-rpath,@executable_path/../Frameworks \
+            -o cellular_automata \
+            Main.cpp Grid.cpp RuleSet.cpp Cell.cpp Menu.cpp Settings.cpp
+
+          # Create .app bundle
+          APP="CellularAutomata.app"
+          mkdir -p "${APP}/Contents/MacOS"
+          mkdir -p "${APP}/Contents/Frameworks"
+          mkdir -p "${APP}/Contents/Resources/resources"
+
+          cp cellular_automata "${APP}/Contents/MacOS/"
+          cp resources/arial.ttf "${APP}/Contents/Resources/resources/"
+
+          # Bundle dylibs
+          for lib in \
+            "${SFML_LIB}/libsfml-graphics.2.6.dylib" \
+            "${SFML_LIB}/libsfml-window.2.6.dylib" \
+            "${SFML_LIB}/libsfml-system.2.6.dylib" \
+            "${FREETYPE_LIB}/libfreetype.6.dylib" \
+            "${LIBPNG_LIB}/libpng16.16.dylib"; do
+            cp "$lib" "${APP}/Contents/Frameworks/"
+          done
+
+          FW="${APP}/Contents/Frameworks"
+
+          # Fix dylib ids
+          for lib in "${FW}"/*.dylib; do
+            install_name_tool -id "@rpath/$(basename "$lib")" "$lib" 2>/dev/null || true
+          done
+
+          # Fix binary references
+          install_name_tool -change "${SFML_LIB}/libsfml-graphics.2.6.dylib" "@rpath/libsfml-graphics.2.6.dylib" "${APP}/Contents/MacOS/cellular_automata"
+          install_name_tool -change "${SFML_LIB}/libsfml-window.2.6.dylib"   "@rpath/libsfml-window.2.6.dylib"   "${APP}/Contents/MacOS/cellular_automata"
+          install_name_tool -change "${SFML_LIB}/libsfml-system.2.6.dylib"   "@rpath/libsfml-system.2.6.dylib"   "${APP}/Contents/MacOS/cellular_automata"
+
+          # Fix transitive deps
+          install_name_tool -change "${FREETYPE_LIB}/libfreetype.6.dylib" "@rpath/libfreetype.6.dylib" "${FW}/libsfml-graphics.2.6.dylib"
+          install_name_tool -change "${LIBPNG_LIB}/libpng16.16.dylib"     "@rpath/libpng16.16.dylib"   "${FW}/libfreetype.6.dylib"
+
+          # Add rpath so dylibs find each other
+          for lib in "${FW}"/*.dylib; do
+            install_name_tool -add_rpath "@loader_path" "$lib" 2>/dev/null || true
+          done
+
+          # Launcher script
+          cat > "${APP}/Contents/MacOS/launch.sh" << 'LAUNCHER'
+          #!/bin/bash
+          SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+          cd "${SCRIPT_DIR}/../Resources"
+          exec "${SCRIPT_DIR}/cellular_automata"
+          LAUNCHER
+          chmod +x "${APP}/Contents/MacOS/launch.sh"
+
+          # Info.plist
+          cat > "${APP}/Contents/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>CellularAutomata</string>
+              <key>CFBundleDisplayName</key>
+              <string>Cellular Automata</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.alexhugli.cellular-automata</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleExecutable</key>
+              <string>launch.sh</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          # Strip leading whitespace from heredoc files
+          sed -i '' 's/^          //' "${APP}/Contents/MacOS/launch.sh"
+          sed -i '' 's/^          //' "${APP}/Contents/Info.plist"
+
+          # Sign and package
+          codesign --force --deep --sign - "${APP}"
+          hdiutil create -volname "CellularAutomata" -srcfolder "${APP}" -ov -format UDZO CellularAutomata-macOS.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: CellularAutomata-macOS.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-sfml
+
+      - name: Build release
+        run: |
+          # Compile
+          g++ -std=c++17 -O2 -o cellular_automata.exe \
+            Main.cpp Grid.cpp RuleSet.cpp Cell.cpp Menu.cpp Settings.cpp \
+            -lsfml-graphics -lsfml-window -lsfml-system
+
+          # Create release folder
+          mkdir -p release/resources
+
+          cp cellular_automata.exe release/
+          cp resources/arial.ttf release/resources/
+
+          # Bundle required DLLs
+          MINGW="/mingw64/bin"
+          for dll in \
+            sfml-graphics-2.dll sfml-window-2.dll sfml-system-2.dll \
+            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll \
+            libfreetype-6.dll zlib1.dll libpng16-16.dll libbz2-1.dll \
+            libbrotlidec.dll libbrotlicommon.dll libharfbuzz-0.dll \
+            libglib-2.0-0.dll libintl-8.dll libiconv-2.dll libpcre2-8-0.dll \
+            libgraphite2.dll; do
+            [ -f "${MINGW}/${dll}" ] && cp "${MINGW}/${dll}" release/ || true
+          done
+
+          # Create a simple launcher batch file
+          cat > release/CellularAutomata.bat << 'BAT'
+          @echo off
+          cd /d "%~dp0"
+          start "" cellular_automata.exe
+          BAT
+
+      - name: Package zip
+        shell: pwsh
+        run: Compress-Archive -Path release/* -DestinationPath CellularAutomata-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: CellularAutomata-Windows.zip
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/macos-release/CellularAutomata-macOS.dmg
+            artifacts/windows-release/CellularAutomata-Windows.zip
