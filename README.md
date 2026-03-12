@@ -2,6 +2,12 @@
 
 A 2D cellular automata simulator built in C++ with SFML. Explore 32 preset rulesets — from Conway's Game of Life to fractal replicators - or define your own using Birth/Survival notation. Features age-based color rendering, adjustable grid resolution down to 1px per cell (480,000 cells), and real-time speed control.
 
+<p align="center">
+  <img src="assets/demo-replicator.gif" alt="Replicator rule — fractal growing from a single seed" width="480">
+  &nbsp;&nbsp;
+  <img src="assets/demo-organic.gif" alt="Day & Night rule — organic structures with age coloring" width="480">
+</p>
+
 Inspired by Stephen Wolfram's *A New Kind of Science* and the idea that extraordinarily complex behavior can emerge from extremely simple rules.
 
 ## What Are Cellular Automata?
