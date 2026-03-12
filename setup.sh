@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Cellular Automata — Setup & Build ==="
+echo "=== Cellular Automata - Setup & Build ==="
 echo
 
 OS="$(uname -s)"
