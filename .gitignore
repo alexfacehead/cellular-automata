@@ -9,6 +9,10 @@ cellular_automata.exe
 # macOS
 .DS_Store
 
+# User data
+saved_configs.txt
+settings.txt
+
 # IDE
 .vscode/
 .idea/

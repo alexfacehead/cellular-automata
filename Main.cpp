@@ -138,17 +138,34 @@ void render(sf::RenderWindow& window, const Grid& grid, const RuleSet& rules)
     sprite.setScale((float)windowWidth / w, (float)windowHeight / h);
     window.draw(sprite);
 
-    // End button overlay
-    sf::RectangleShape endBtn(sf::Vector2f(60, 26));
-    endBtn.setPosition(windowWidth - 68, 8);
+    // Toolbar buttons (top-right): Save | End
+    float tbY = 8, tbH = 22;
+
+    // Save button
+    sf::Text saveLabel("Save", getFont(), 12);
+    float saveW = saveLabel.getGlobalBounds().width + 16;
+    float saveX = windowWidth - 68 - saveW - 6;
+    sf::RectangleShape saveBtn(sf::Vector2f(saveW, tbH));
+    saveBtn.setPosition(saveX, tbY);
+    saveBtn.setFillColor(sf::Color(30, 55, 80));
+    saveBtn.setOutlineColor(sf::Color(60, 120, 180));
+    saveBtn.setOutlineThickness(1);
+    window.draw(saveBtn);
+    saveLabel.setFillColor(sf::Color(180, 220, 255));
+    saveLabel.setPosition(saveX + 8, tbY + 3);
+    window.draw(saveLabel);
+
+    // End button
+    sf::RectangleShape endBtn(sf::Vector2f(60, tbH));
+    endBtn.setPosition(windowWidth - 68, tbY);
     endBtn.setFillColor(sf::Color(80, 50, 30));
     endBtn.setOutlineColor(sf::Color(180, 120, 60));
     endBtn.setOutlineThickness(1);
     window.draw(endBtn);
 
-    sf::Text endText("End", getFont(), 14);
+    sf::Text endText("End", getFont(), 12);
     endText.setFillColor(sf::Color(255, 220, 180));
-    endText.setPosition(windowWidth - 52, 12);
+    endText.setPosition(windowWidth - 52, tbY + 3);
     window.draw(endText);
 
     // HUD - top left info bar
@@ -214,8 +231,18 @@ void handleInput(sf::RenderWindow& window, Grid& grid, RuleSet& rules, Menu& men
                     int mx = (int)pos.x;
                     int my = (int)pos.y;
 
+                    // Save button check
+                    {
+                        sf::Text sl("Save", getFont(), 12);
+                        float sw = sl.getGlobalBounds().width + 16;
+                        float sx = windowWidth - 68 - sw - 6;
+                        if (mx >= sx && mx <= sx + sw && my >= 8 && my <= 30) {
+                            menu.saveCurrentConfig();
+                            break;
+                        }
+                    }
                     // End button check
-                    if (mx >= windowWidth - 68 && mx <= windowWidth - 8 && my >= 8 && my <= 34) {
+                    if (mx >= windowWidth - 68 && mx <= windowWidth - 8 && my >= 8 && my <= 30) {
                         menu.toggle();
                         paused = true;
                         break;

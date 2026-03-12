@@ -1,6 +1,8 @@
 #include "Menu.h"
 #include <cstring>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 
 using namespace sf;
 
@@ -37,13 +39,12 @@ static const int allCellSizes[] = { 1, 2, 3, 5, 10, 15, 20 };
 static const int numCellSizes = 7;
 
 // --- Layout constants ---
-static const int rowY0 = 88;     // first button row
+static const int rowY0 = 88;
 static const int rowSpacing = 26;
 static const int btnH = 20;
 static const int btnGap = 5;
 static const int listStartY = rowY0 + rowSpacing * 3 + 8;
 static const int itemH = 22;
-static const int headerH = 26;
 
 // --- Button position helpers ---
 struct BtnLayout { float x[12]; float w[12]; int count; float labelX; };
@@ -68,146 +69,11 @@ static BtnLayout layoutButtons(sf::Font& font, const char* labels[], int n, int 
     return bl;
 }
 
-// ============================================================
-
-Menu::Menu(Grid& grid, RuleSet& rules) : grid(grid), rules(rules),
-    currentPage(MenuPage::RULES), selectedIndex(0), scrollOffset(0),
-    initMode(InitMode::RANDOM_50)
-{
-    font.loadFromFile("resources/arial.ttf");
-    presets = RuleSet::getPresets();
-    buildVisualItems();
-    // Default selectedIndex to first selectable item
-    for (int i = 0; i < (int)visualItems.size(); i++) {
-        if (visualItems[i].type != VisualItem::HEADER) { selectedIndex = i; break; }
-    }
-    std::memset(customBirth, 0, sizeof(customBirth));
-    std::memset(customSurvival, 0, sizeof(customSurvival));
-    customBirth[3] = true;
-    customSurvival[2] = true;
-    customSurvival[3] = true;
-    shown = false;
-}
-
-void Menu::buildVisualItems()
-{
-    visualItems.clear();
-    std::string lastCat;
-    for (int i = 0; i < (int)presets.size(); i++) {
-        if (presets[i].category != lastCat) {
-            lastCat = presets[i].category;
-            VisualItem h;
-            h.type = VisualItem::HEADER;
-            h.presetIndex = -1;
-            h.label = lastCat;
-            visualItems.push_back(h);
-        }
-        VisualItem p;
-        p.type = VisualItem::PRESET;
-        p.presetIndex = i;
-        p.label = presets[i].name;
-        visualItems.push_back(p);
-    }
-    VisualItem c;
-    c.type = VisualItem::CUSTOM_OPT;
-    c.presetIndex = -1;
-    c.label = "Custom Rules...";
-    visualItems.push_back(c);
-}
-
-bool Menu::isShown() { return shown; }
-
-void Menu::toggle()
-{
-    shown = !shown;
-    if (shown) currentPage = MenuPage::RULES;
-}
-
-void Menu::showMenu(sf::RenderWindow& window)
-{
-    switch (currentPage) {
-        case MenuPage::RULES:  showRulesPage(window); break;
-        case MenuPage::CUSTOM: showCustomPage(window); break;
-    }
-}
-
-void Menu::handleMenuInput(sf::RenderWindow& window)
-{
-    switch (currentPage) {
-        case MenuPage::RULES:  handleRulesInput(window); break;
-        case MenuPage::CUSTOM: handleCustomInput(window); break;
-    }
-}
-
-const char* Menu::initModeName(InitMode mode)
-{
-    switch (mode) {
-        case InitMode::RANDOM_50:   return "50%";
-        case InitMode::RANDOM_25:   return "25%";
-        case InitMode::RANDOM_10:   return "10%";
-        case InitMode::RANDOM_5:    return "5%";
-        case InitMode::SINGLE_SEED: return "Seed";
-        case InitMode::CLUSTER:     return "Cluster";
-    }
-    return "";
-}
-
-void Menu::moveSelection(int dir)
-{
-    int n = (int)visualItems.size();
-    for (int attempt = 0; attempt < n; attempt++) {
-        selectedIndex += dir;
-        if (selectedIndex < 0) selectedIndex = n - 1;
-        if (selectedIndex >= n) selectedIndex = 0;
-        if (visualItems[selectedIndex].type != VisualItem::HEADER) break;
-    }
-}
-
-void Menu::initializeGrid()
-{
-    grid.resize(windowWidth / cellSize, windowHeight / cellSize);
-    switch (initMode) {
-        case InitMode::RANDOM_50:   grid.initializeCellsWithDensity(50); break;
-        case InitMode::RANDOM_25:   grid.initializeCellsWithDensity(25); break;
-        case InitMode::RANDOM_10:   grid.initializeCellsWithDensity(10); break;
-        case InitMode::RANDOM_5:    grid.initializeCellsWithDensity(5);  break;
-        case InitMode::SINGLE_SEED: grid.initializeCellsSeed();          break;
-        case InitMode::CLUSTER:     grid.initializeCellsCluster();       break;
-    }
-}
-
-void Menu::selectPreset(int index)
-{
-    if (index >= 0 && index < (int)presets.size()) {
-        rules = presets[index];
-        initializeGrid();
-        simulationClock.restart();
-        paused = false;
-        shown = false;
-    }
-}
-
-void Menu::applyCustomRule()
-{
-    std::vector<int> birth, survival;
-    for (int i = 0; i <= 8; i++) {
-        if (customBirth[i]) birth.push_back(i);
-        if (customSurvival[i]) survival.push_back(i);
-    }
-    rules.setRule("Custom", birth, survival);
-    rules.category = "";
-    initializeGrid();
-    simulationClock.restart();
-    paused = false;
-    shown = false;
-}
-
 // --- Draw a row of toggle buttons ---
 static void drawButtonRow(sf::RenderWindow& window, sf::Font& font,
     int y, const char* rowLabel, const char* labels[], int n, int activeIdx,
     sf::Color activeCol, sf::Color activeBorder)
 {
-    // Row label
     sf::Text lbl(rowLabel, font, 10);
     lbl.setFillColor(sf::Color(100, 100, 120));
     float totalW = 0;
@@ -241,6 +107,356 @@ static void drawButtonRow(sf::RenderWindow& window, sf::Font& font,
     }
 }
 
+// Helper: handle clicks on a button row, returns clicked index or -1
+static int clickButtonRow(sf::Font& font, int y, const char* labels[], int n, int mx, int my)
+{
+    if (my < y || my > y + btnH) return -1;
+    BtnLayout bl = layoutButtons(font, labels, n);
+    for (int i = 0; i < n; i++)
+        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
+            return i;
+    return -1;
+}
+
+// Draw all 3 config rows and return active indices
+static void drawConfigRows(sf::RenderWindow& window, sf::Font& font, int baseY,
+    InitMode initMode, int activeCellSize, float activeSpeed)
+{
+    const char* initLabels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
+    int activeInit = 0;
+    for (int i = 0; i < numInitModes; i++)
+        if (allInitModes[i] == initMode) { activeInit = i; break; }
+    drawButtonRow(window, font, baseY, "Density:", initLabels, numInitModes, activeInit,
+        sf::Color(35, 55, 90), sf::Color(70, 110, 190));
+
+    const char* cellLabels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
+    int activeCell = 0;
+    for (int i = 0; i < numCellSizes; i++)
+        if (allCellSizes[i] == activeCellSize) { activeCell = i; break; }
+    drawButtonRow(window, font, baseY + rowSpacing, "Cell:", cellLabels, numCellSizes, activeCell,
+        sf::Color(55, 35, 85), sf::Color(110, 70, 180));
+
+    const char* speedLabels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
+    int activeSpd = findSpeedIndex(activeSpeed);
+    drawButtonRow(window, font, baseY + rowSpacing * 2, "Speed:", speedLabels, numSpeeds, activeSpd,
+        sf::Color(85, 55, 35), sf::Color(180, 110, 70));
+}
+
+// Handle clicks on config rows, returns true if something changed
+static bool handleConfigRowClicks(sf::Font& font, int baseY, int mx, int my,
+    InitMode& initMode, float& speed)
+{
+    const char* initLabels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
+    int ci = clickButtonRow(font, baseY, initLabels, numInitModes, mx, my);
+    if (ci >= 0) { initMode = allInitModes[ci]; return true; }
+
+    const char* cellLabels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
+    ci = clickButtonRow(font, baseY + rowSpacing, cellLabels, numCellSizes, mx, my);
+    if (ci >= 0) { cellSize = allCellSizes[ci]; return true; }
+
+    const char* speedLabels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
+    ci = clickButtonRow(font, baseY + rowSpacing * 2, speedLabels, numSpeeds, mx, my);
+    if (ci >= 0) { speed = allSpeeds[ci]; return true; }
+
+    return false;
+}
+
+// ============================================================
+
+Menu::Menu(Grid& grid, RuleSet& rules) : grid(grid), rules(rules),
+    currentPage(MenuPage::RULES), selectedIndex(0), scrollOffset(0),
+    initMode(InitMode::RANDOM_50), lastWasCustom(false)
+{
+    font.loadFromFile("resources/arial.ttf");
+    presets = RuleSet::getPresets();
+    loadSavedConfigs();
+    buildVisualItems();
+    for (int i = 0; i < (int)visualItems.size(); i++) {
+        if (visualItems[i].type != VisualItem::HEADER) { selectedIndex = i; break; }
+    }
+    std::memset(customBirth, 0, sizeof(customBirth));
+    std::memset(customSurvival, 0, sizeof(customSurvival));
+    customBirth[3] = true;
+    customSurvival[2] = true;
+    customSurvival[3] = true;
+    shown = false;
+}
+
+void Menu::buildVisualItems()
+{
+    visualItems.clear();
+
+    // Saved configs section
+    if (!savedConfigs.empty()) {
+        VisualItem h;
+        h.type = VisualItem::HEADER;
+        h.presetIndex = -1;
+        h.label = "Saved";
+        visualItems.push_back(h);
+        for (int i = 0; i < (int)savedConfigs.size(); i++) {
+            VisualItem s;
+            s.type = VisualItem::SAVED;
+            s.presetIndex = i;
+            s.label = savedConfigs[i].name;
+            visualItems.push_back(s);
+        }
+    }
+
+    // Preset categories
+    std::string lastCat;
+    for (int i = 0; i < (int)presets.size(); i++) {
+        if (presets[i].category != lastCat) {
+            lastCat = presets[i].category;
+            VisualItem h;
+            h.type = VisualItem::HEADER;
+            h.presetIndex = -1;
+            h.label = lastCat;
+            visualItems.push_back(h);
+        }
+        VisualItem p;
+        p.type = VisualItem::PRESET;
+        p.presetIndex = i;
+        p.label = presets[i].name;
+        visualItems.push_back(p);
+    }
+    VisualItem c;
+    c.type = VisualItem::CUSTOM_OPT;
+    c.presetIndex = -1;
+    c.label = "Custom Rules...";
+    visualItems.push_back(c);
+}
+
+bool Menu::isShown() { return shown; }
+
+void Menu::toggle()
+{
+    shown = !shown;
+    if (shown) {
+        currentPage = lastWasCustom ? MenuPage::CUSTOM : MenuPage::RULES;
+    }
+}
+
+void Menu::showMenu(sf::RenderWindow& window)
+{
+    switch (currentPage) {
+        case MenuPage::RULES:  showRulesPage(window); break;
+        case MenuPage::CUSTOM: showCustomPage(window); break;
+    }
+}
+
+void Menu::handleMenuInput(sf::RenderWindow& window)
+{
+    switch (currentPage) {
+        case MenuPage::RULES:  handleRulesInput(window); break;
+        case MenuPage::CUSTOM: handleCustomInput(window); break;
+    }
+}
+
+const char* Menu::initModeName(InitMode mode)
+{
+    switch (mode) {
+        case InitMode::RANDOM_50:   return "50%";
+        case InitMode::RANDOM_25:   return "25%";
+        case InitMode::RANDOM_10:   return "10%";
+        case InitMode::RANDOM_5:    return "5%";
+        case InitMode::SINGLE_SEED: return "Seed";
+        case InitMode::CLUSTER:     return "Cluster";
+    }
+    return "";
+}
+
+InitMode Menu::initModeFromInt(int v)
+{
+    switch (v) {
+        case 0: return InitMode::RANDOM_50;
+        case 1: return InitMode::RANDOM_25;
+        case 2: return InitMode::RANDOM_10;
+        case 3: return InitMode::RANDOM_5;
+        case 4: return InitMode::SINGLE_SEED;
+        case 5: return InitMode::CLUSTER;
+    }
+    return InitMode::RANDOM_50;
+}
+
+static int initModeToInt(InitMode m)
+{
+    switch (m) {
+        case InitMode::RANDOM_50:   return 0;
+        case InitMode::RANDOM_25:   return 1;
+        case InitMode::RANDOM_10:   return 2;
+        case InitMode::RANDOM_5:    return 3;
+        case InitMode::SINGLE_SEED: return 4;
+        case InitMode::CLUSTER:     return 5;
+    }
+    return 0;
+}
+
+void Menu::moveSelection(int dir)
+{
+    int n = (int)visualItems.size();
+    for (int attempt = 0; attempt < n; attempt++) {
+        selectedIndex += dir;
+        if (selectedIndex < 0) selectedIndex = n - 1;
+        if (selectedIndex >= n) selectedIndex = 0;
+        if (visualItems[selectedIndex].type != VisualItem::HEADER) break;
+    }
+}
+
+void Menu::initializeGrid()
+{
+    grid.resize(windowWidth / cellSize, windowHeight / cellSize);
+    switch (initMode) {
+        case InitMode::RANDOM_50:   grid.initializeCellsWithDensity(50); break;
+        case InitMode::RANDOM_25:   grid.initializeCellsWithDensity(25); break;
+        case InitMode::RANDOM_10:   grid.initializeCellsWithDensity(10); break;
+        case InitMode::RANDOM_5:    grid.initializeCellsWithDensity(5);  break;
+        case InitMode::SINGLE_SEED: grid.initializeCellsSeed();          break;
+        case InitMode::CLUSTER:     grid.initializeCellsCluster();       break;
+    }
+}
+
+void Menu::selectPreset(int index)
+{
+    if (index >= 0 && index < (int)presets.size()) {
+        rules = presets[index];
+        lastWasCustom = false;
+        initializeGrid();
+        simulationClock.restart();
+        paused = false;
+        shown = false;
+    }
+}
+
+void Menu::selectSaved(int index)
+{
+    if (index >= 0 && index < (int)savedConfigs.size()) {
+        const SavedConfig& sc = savedConfigs[index];
+        std::vector<int> b, s;
+        for (int i = 0; i <= 8; i++) {
+            if (sc.birth[i]) b.push_back(i);
+            if (sc.survival[i]) s.push_back(i);
+        }
+        rules.setRule(sc.name, b, s);
+        rules.category = "Saved";
+        cellSize = sc.cellSz;
+        simulationSpeed = sc.speed;
+        initMode = sc.init;
+        // Also update custom toggles to match
+        std::memcpy(customBirth, sc.birth, sizeof(customBirth));
+        std::memcpy(customSurvival, sc.survival, sizeof(customSurvival));
+        lastWasCustom = false;
+        initializeGrid();
+        simulationClock.restart();
+        paused = false;
+        shown = false;
+    }
+}
+
+void Menu::applyCustomRule()
+{
+    std::vector<int> birth, survival;
+    for (int i = 0; i <= 8; i++) {
+        if (customBirth[i]) birth.push_back(i);
+        if (customSurvival[i]) survival.push_back(i);
+    }
+    rules.setRule("Custom", birth, survival);
+    rules.category = "";
+    lastWasCustom = true;
+    initializeGrid();
+    simulationClock.restart();
+    paused = false;
+    shown = false;
+}
+
+// --- Save/Load configs ---
+static const char* SAVE_FILE = "saved_configs.txt";
+
+void Menu::loadSavedConfigs()
+{
+    savedConfigs.clear();
+    std::ifstream f(SAVE_FILE);
+    if (!f.is_open()) return;
+
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        SavedConfig sc;
+        std::memset(sc.birth, 0, sizeof(sc.birth));
+        std::memset(sc.survival, 0, sizeof(sc.survival));
+
+        // Format: name|b0b1b2..b8|s0s1..s8|cellSz|speed|initMode
+        std::string name, bstr, sstr;
+        std::getline(ss, name, '|');
+        std::getline(ss, bstr, '|');
+        std::getline(ss, sstr, '|');
+        sc.name = name;
+        for (int i = 0; i < 9 && i < (int)bstr.size(); i++)
+            sc.birth[i] = (bstr[i] == '1');
+        for (int i = 0; i < 9 && i < (int)sstr.size(); i++)
+            sc.survival[i] = (sstr[i] == '1');
+
+        std::string tok;
+        if (std::getline(ss, tok, '|')) sc.cellSz = std::stoi(tok);
+        else sc.cellSz = 10;
+        if (std::getline(ss, tok, '|')) sc.speed = std::stof(tok);
+        else sc.speed = 0.15f;
+        if (std::getline(ss, tok, '|')) sc.init = initModeFromInt(std::stoi(tok));
+        else sc.init = InitMode::RANDOM_50;
+
+        savedConfigs.push_back(sc);
+    }
+}
+
+void Menu::writeSavedConfigs()
+{
+    std::ofstream f(SAVE_FILE);
+    if (!f.is_open()) return;
+    for (const auto& sc : savedConfigs) {
+        f << sc.name << '|';
+        for (int i = 0; i < 9; i++) f << (sc.birth[i] ? '1' : '0');
+        f << '|';
+        for (int i = 0; i < 9; i++) f << (sc.survival[i] ? '1' : '0');
+        f << '|' << sc.cellSz << '|' << sc.speed << '|' << initModeToInt(sc.init) << '\n';
+    }
+}
+
+void Menu::saveCurrentConfig()
+{
+    SavedConfig sc;
+    // Build notation for the name
+    std::string notation = rules.getNotation();
+    sc.name = rules.name;
+    if (sc.name == "Custom") sc.name = notation;
+
+    // Check for duplicate name and make unique
+    int dup = 1;
+    std::string baseName = sc.name;
+    for (bool found = true; found;) {
+        found = false;
+        for (const auto& existing : savedConfigs) {
+            if (existing.name == sc.name) {
+                found = true;
+                sc.name = baseName + " (" + std::to_string(++dup) + ")";
+                break;
+            }
+        }
+    }
+
+    std::memcpy(sc.birth, rules.birthConditions, sizeof(sc.birth));
+    std::memcpy(sc.survival, rules.survivalConditions, sizeof(sc.survival));
+    sc.cellSz = cellSize;
+    sc.speed = simulationSpeed;
+    sc.init = initMode;
+
+    savedConfigs.push_back(sc);
+    writeSavedConfigs();
+    buildVisualItems();
+    // Fix selectedIndex if needed
+    if (selectedIndex >= (int)visualItems.size())
+        selectedIndex = (int)visualItems.size() - 1;
+}
+
 // ============================================================
 // Rules Page
 // ============================================================
@@ -256,7 +472,6 @@ void Menu::showRulesPage(sf::RenderWindow& window)
     title.setPosition(windowWidth / 2.f - title.getGlobalBounds().width / 2.f, 8);
     window.draw(title);
 
-    // Separator
     sf::RectangleShape sep(sf::Vector2f(windowWidth - 100, 1));
     sep.setPosition(50, 42);
     sep.setFillColor(sf::Color(50, 50, 70));
@@ -272,34 +487,13 @@ void Menu::showRulesPage(sf::RenderWindow& window)
     info.setPosition(windowWidth / 2.f - info.getGlobalBounds().width / 2.f, 50);
     window.draw(info);
 
-    // --- Subtitle ---
     sf::Text subtitle("Configure and select a ruleset", font, 11);
     subtitle.setFillColor(sf::Color(120, 120, 145));
     subtitle.setPosition(windowWidth / 2.f - subtitle.getGlobalBounds().width / 2.f, 70);
     window.draw(subtitle);
 
-    // --- Button rows ---
-    // Init mode
-    const char* initLabels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
-    int activeInit = 0;
-    for (int i = 0; i < numInitModes; i++)
-        if (allInitModes[i] == initMode) { activeInit = i; break; }
-    drawButtonRow(window, font, rowY0, "Density:", initLabels, numInitModes, activeInit,
-        sf::Color(35, 55, 90), sf::Color(70, 110, 190));
-
-    // Cell size
-    const char* cellLabels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
-    int activeCell = 0;
-    for (int i = 0; i < numCellSizes; i++)
-        if (allCellSizes[i] == cellSize) { activeCell = i; break; }
-    drawButtonRow(window, font, rowY0 + rowSpacing, "Cell:", cellLabels, numCellSizes, activeCell,
-        sf::Color(55, 35, 85), sf::Color(110, 70, 180));
-
-    // Speed
-    const char* speedLabels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
-    int activeSpeed = findSpeedIndex(simulationSpeed);
-    drawButtonRow(window, font, rowY0 + rowSpacing * 2, "Speed:", speedLabels, numSpeeds, activeSpeed,
-        sf::Color(85, 55, 35), sf::Color(180, 110, 70));
+    // --- Config button rows ---
+    drawConfigRows(window, font, rowY0, initMode, cellSize, simulationSpeed);
 
     // --- Separator before list ---
     sf::RectangleShape sep2(sf::Vector2f(windowWidth - 60, 1));
@@ -307,7 +501,7 @@ void Menu::showRulesPage(sf::RenderWindow& window)
     sep2.setFillColor(sf::Color(45, 45, 60));
     window.draw(sep2);
 
-    // --- Rule list with category headers ---
+    // --- Rule list ---
     int totalVisual = (int)visualItems.size();
     int maxVisible = (windowHeight - listStartY - 28) / itemH;
 
@@ -322,7 +516,6 @@ void Menu::showRulesPage(sf::RenderWindow& window)
 
         if (item.type == VisualItem::HEADER)
         {
-            // Category header
             sf::Text hdr(item.label, font, 10);
             hdr.setFillColor(sf::Color(100, 130, 180));
             hdr.setStyle(sf::Text::Bold);
@@ -336,7 +529,6 @@ void Menu::showRulesPage(sf::RenderWindow& window)
         }
         else
         {
-            // Highlight
             if (idx == selectedIndex) {
                 sf::RectangleShape hl(sf::Vector2f(windowWidth - 50, itemH - 2));
                 hl.setPosition(25, yPos);
@@ -357,8 +549,27 @@ void Menu::showRulesPage(sf::RenderWindow& window)
                 notation.setPosition(windowWidth - 45 - notation.getGlobalBounds().width, yPos + 3);
                 window.draw(notation);
             }
+            else if (item.type == VisualItem::SAVED) {
+                sf::Text nameText(item.label, font, 13);
+                nameText.setPosition(40, yPos + 2);
+                nameText.setFillColor(idx == selectedIndex ? sf::Color(255, 240, 140) : sf::Color(180, 210, 255));
+                window.draw(nameText);
+
+                // Show config summary on right
+                const SavedConfig& sc = savedConfigs[item.presetIndex];
+                std::string summ = std::to_string(sc.cellSz) + "px " + speedLabel(sc.speed);
+                sf::Text summText(summ, font, 10);
+                summText.setFillColor(sf::Color(100, 140, 180));
+                summText.setPosition(windowWidth - 45 - summText.getGlobalBounds().width, yPos + 4);
+                window.draw(summText);
+
+                // Delete X button
+                sf::Text delX("x", font, 10);
+                delX.setFillColor(sf::Color(120, 70, 70));
+                delX.setPosition(windowWidth - 30, yPos + 4);
+                window.draw(delX);
+            }
             else {
-                // Custom option
                 sf::Text ct(item.label, font, 13);
                 ct.setPosition(40, yPos + 2);
                 ct.setFillColor(idx == selectedIndex ? sf::Color(255, 240, 140) : sf::Color(160, 160, 230));
@@ -382,7 +593,6 @@ void Menu::showRulesPage(sf::RenderWindow& window)
         window.draw(dn);
     }
 
-    // Hint
     sf::Text hint("Up/Down + Enter  |  Click to select  |  +/- speed  |  Esc quit", font, 10);
     hint.setFillColor(sf::Color(70, 70, 90));
     hint.setPosition(windowWidth / 2.f - hint.getGlobalBounds().width / 2.f, windowHeight - 20);
@@ -414,7 +624,6 @@ void Menu::handleRulesInput(sf::RenderWindow& window)
                 moveSelection(-1);
                 if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
                 if (selectedIndex >= scrollOffset + maxVisible) scrollOffset = selectedIndex - maxVisible + 1;
-                // Also scroll past any headers above
                 while (scrollOffset > 0 && visualItems[scrollOffset].type == VisualItem::HEADER
                        && scrollOffset > selectedIndex - 1)
                     scrollOffset--;
@@ -427,6 +636,7 @@ void Menu::handleRulesInput(sf::RenderWindow& window)
             else if (event.key.code == sf::Keyboard::Return) {
                 const auto& item = visualItems[selectedIndex];
                 if (item.type == VisualItem::PRESET) selectPreset(item.presetIndex);
+                else if (item.type == VisualItem::SAVED) selectSaved(item.presetIndex);
                 else if (item.type == VisualItem::CUSTOM_OPT) currentPage = MenuPage::CUSTOM;
             }
             else if (event.key.code == sf::Keyboard::Equal) {
@@ -437,6 +647,19 @@ void Menu::handleRulesInput(sf::RenderWindow& window)
                 int i = findSpeedIndex(simulationSpeed);
                 if (i < numSpeeds - 1) simulationSpeed = allSpeeds[i + 1];
             }
+            else if (event.key.code == sf::Keyboard::Delete || event.key.code == sf::Keyboard::BackSpace) {
+                // Delete saved config if selected
+                const auto& item = visualItems[selectedIndex];
+                if (item.type == VisualItem::SAVED) {
+                    savedConfigs.erase(savedConfigs.begin() + item.presetIndex);
+                    writeSavedConfigs();
+                    buildVisualItems();
+                    if (selectedIndex >= (int)visualItems.size())
+                        selectedIndex = (int)visualItems.size() - 1;
+                    if (visualItems[selectedIndex].type == VisualItem::HEADER)
+                        moveSelection(1);
+                }
+            }
         }
 
         if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
@@ -445,56 +668,8 @@ void Menu::handleRulesInput(sf::RenderWindow& window)
                 sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
             int mx = (int)pos.x, my = (int)pos.y;
 
-            // --- Button row clicks ---
-            // Recompute button positions for each row
-            auto checkRow = [&](int y, int n, auto callback) {
-                if (my < y || my > y + btnH) return;
-                // Measure buttons to find positions
-                float totalW = 0;
-                float ws[12];
-                for (int i = 0; i < n; i++) {
-                    // We need the actual labels... handled per-row below
-                }
-                (void)totalW; (void)ws;
-                callback(mx, my);
-            };
-            (void)checkRow;
-
-            // Init mode row
-            {
-                const char* labels[] = { "50%", "25%", "10%", "5%", "Seed", "Cluster" };
-                BtnLayout bl = layoutButtons(font, labels, numInitModes);
-                int y = rowY0;
-                if (my >= y && my <= y + btnH) {
-                    for (int i = 0; i < numInitModes; i++)
-                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
-                            initMode = allInitModes[i];
-                }
-            }
-
-            // Cell size row
-            {
-                const char* labels[] = { "1px", "2px", "3px", "5px", "10px", "15px", "20px" };
-                BtnLayout bl = layoutButtons(font, labels, numCellSizes);
-                int y = rowY0 + rowSpacing;
-                if (my >= y && my <= y + btnH) {
-                    for (int i = 0; i < numCellSizes; i++)
-                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
-                            cellSize = allCellSizes[i];
-                }
-            }
-
-            // Speed row
-            {
-                const char* labels[] = { "0.02s", "0.05s", "0.08s", "0.10s", "0.15s", "0.25s", "0.40s" };
-                BtnLayout bl = layoutButtons(font, labels, numSpeeds);
-                int y = rowY0 + rowSpacing * 2;
-                if (my >= y && my <= y + btnH) {
-                    for (int i = 0; i < numSpeeds; i++)
-                        if (mx >= bl.x[i] && mx <= bl.x[i] + bl.w[i])
-                            simulationSpeed = allSpeeds[i];
-                }
-            }
+            // Config row clicks
+            handleConfigRowClicks(font, rowY0, mx, my, initMode, simulationSpeed);
 
             // Rule list clicks
             if (my >= listStartY && my < listStartY + maxVisible * itemH) {
@@ -504,11 +679,24 @@ void Menu::handleRulesInput(sf::RenderWindow& window)
                     if (item.type == VisualItem::PRESET) {
                         selectedIndex = clickedVi;
                         selectPreset(item.presetIndex);
+                    } else if (item.type == VisualItem::SAVED) {
+                        // Check if click is on the delete X
+                        if (mx >= windowWidth - 38) {
+                            savedConfigs.erase(savedConfigs.begin() + item.presetIndex);
+                            writeSavedConfigs();
+                            buildVisualItems();
+                            if (selectedIndex >= (int)visualItems.size())
+                                selectedIndex = (int)visualItems.size() - 1;
+                            if (selectedIndex >= 0 && visualItems[selectedIndex].type == VisualItem::HEADER)
+                                moveSelection(1);
+                        } else {
+                            selectedIndex = clickedVi;
+                            selectSaved(item.presetIndex);
+                        }
                     } else if (item.type == VisualItem::CUSTOM_OPT) {
                         selectedIndex = clickedVi;
                         currentPage = MenuPage::CUSTOM;
                     }
-                    // HEADER clicks are ignored
                 }
             }
         }
@@ -533,11 +721,11 @@ void Menu::showCustomPage(sf::RenderWindow& window)
     sf::Text title("CUSTOM RULES", font, 26);
     title.setFillColor(sf::Color(220, 220, 240));
     title.setStyle(sf::Text::Bold);
-    title.setPosition(windowWidth / 2.f - title.getGlobalBounds().width / 2.f, 25);
+    title.setPosition(windowWidth / 2.f - title.getGlobalBounds().width / 2.f, 12);
     window.draw(title);
 
     sf::RectangleShape sep(sf::Vector2f(windowWidth - 100, 1));
-    sep.setPosition(50, 58);
+    sep.setPosition(50, 42);
     sep.setFillColor(sf::Color(50, 50, 70));
     window.draw(sep);
 
@@ -547,102 +735,120 @@ void Menu::showCustomPage(sf::RenderWindow& window)
     notation += " / S";
     for (int i = 0; i <= 8; i++) if (customSurvival[i]) notation += std::to_string(i);
 
-    sf::Text notationText(notation, font, 22);
+    sf::Text notationText(notation, font, 20);
     notationText.setFillColor(sf::Color(90, 210, 100));
-    notationText.setPosition(windowWidth / 2.f - notationText.getGlobalBounds().width / 2.f, 75);
+    notationText.setPosition(windowWidth / 2.f - notationText.getGlobalBounds().width / 2.f, 52);
     window.draw(notationText);
 
     // Descriptions
-    sf::Text desc("Birth: neighbor count that makes a dead cell come alive", font, 11);
+    sf::Text desc("Birth: neighbor count that makes a dead cell come alive", font, 10);
     desc.setFillColor(sf::Color(130, 130, 150));
-    desc.setPosition(windowWidth / 2.f - desc.getGlobalBounds().width / 2.f, 120);
+    desc.setPosition(windowWidth / 2.f - desc.getGlobalBounds().width / 2.f, 82);
     window.draw(desc);
 
-    sf::Text desc2("Survival: neighbor count that lets a living cell survive", font, 11);
+    sf::Text desc2("Survival: neighbor count that lets a living cell survive", font, 10);
     desc2.setFillColor(sf::Color(130, 130, 150));
-    desc2.setPosition(windowWidth / 2.f - desc2.getGlobalBounds().width / 2.f, 136);
+    desc2.setPosition(windowWidth / 2.f - desc2.getGlobalBounds().width / 2.f, 95);
     window.draw(desc2);
 
+    // B/S toggle grid - more compact
     float numStartX = 280;
-    float numSpacing = 48;
+    float numSpacing = 44;
+    int boxSize = 30;
 
     // Birth row
-    sf::Text birthLabel("Birth:", font, 18);
+    sf::Text birthLabel("Birth:", font, 15);
     birthLabel.setFillColor(sf::Color(180, 200, 220));
-    birthLabel.setPosition(110, 185);
+    birthLabel.setPosition(130, 125);
     window.draw(birthLabel);
 
     for (int i = 0; i <= 8; i++) {
         float xPos = numStartX + i * numSpacing;
-        sf::RectangleShape box(sf::Vector2f(34, 34));
-        box.setPosition(xPos - 4, 182);
+        sf::RectangleShape box(sf::Vector2f(boxSize, boxSize));
+        box.setPosition(xPos - 4, 122);
         box.setFillColor(customBirth[i] ? sf::Color(25, 90, 25) : sf::Color(40, 40, 50));
         box.setOutlineColor(customBirth[i] ? sf::Color(50, 180, 50) : sf::Color(65, 65, 75));
         box.setOutlineThickness(1);
         window.draw(box);
 
-        sf::Text num(std::to_string(i), font, 18);
+        sf::Text num(std::to_string(i), font, 15);
         num.setFillColor(customBirth[i] ? sf::Color(90, 240, 90) : sf::Color(90, 90, 100));
-        num.setPosition(xPos + 5, 186);
+        num.setPosition(xPos + 5, 125);
         window.draw(num);
     }
 
     // Survival row
-    sf::Text survLabel("Survival:", font, 18);
+    sf::Text survLabel("Survival:", font, 15);
     survLabel.setFillColor(sf::Color(180, 200, 220));
-    survLabel.setPosition(110, 248);
+    survLabel.setPosition(130, 168);
     window.draw(survLabel);
 
     for (int i = 0; i <= 8; i++) {
         float xPos = numStartX + i * numSpacing;
-        sf::RectangleShape box(sf::Vector2f(34, 34));
-        box.setPosition(xPos - 4, 245);
+        sf::RectangleShape box(sf::Vector2f(boxSize, boxSize));
+        box.setPosition(xPos - 4, 165);
         box.setFillColor(customSurvival[i] ? sf::Color(25, 25, 90) : sf::Color(40, 40, 50));
         box.setOutlineColor(customSurvival[i] ? sf::Color(50, 50, 180) : sf::Color(65, 65, 75));
         box.setOutlineThickness(1);
         window.draw(box);
 
-        sf::Text num(std::to_string(i), font, 18);
+        sf::Text num(std::to_string(i), font, 15);
         num.setFillColor(customSurvival[i] ? sf::Color(90, 90, 240) : sf::Color(90, 90, 100));
-        num.setPosition(xPos + 5, 249);
+        num.setPosition(xPos + 5, 168);
         window.draw(num);
     }
 
-    // Info line
-    std::string infoStr = "Density: " + std::string(initModeName(initMode))
-        + "  |  Cell: " + std::to_string(cellSize) + "px"
-        + "  |  Grid: " + std::to_string(windowWidth / cellSize) + "x" + std::to_string(windowHeight / cellSize)
-        + "  |  Speed: " + speedLabel(simulationSpeed);
-    sf::Text infoText(infoStr, font, 11);
-    infoText.setFillColor(sf::Color(120, 170, 220));
-    infoText.setPosition(windowWidth / 2.f - infoText.getGlobalBounds().width / 2.f, 310);
-    window.draw(infoText);
+    // Separator
+    sf::RectangleShape sep2(sf::Vector2f(windowWidth - 100, 1));
+    sep2.setPosition(50, 210);
+    sep2.setFillColor(sf::Color(45, 45, 60));
+    window.draw(sep2);
 
-    // Apply button
-    sf::RectangleShape applyBtn(sf::Vector2f(200, 38));
-    applyBtn.setPosition(windowWidth / 2.f - 100, 350);
+    // Config button rows
+    int configBaseY = 222;
+    drawConfigRows(window, font, configBaseY, initMode, cellSize, simulationSpeed);
+
+    // Grid info
+    std::string gridInfo = std::to_string(windowWidth / cellSize) + "x"
+        + std::to_string(windowHeight / cellSize) + " grid  ("
+        + std::to_string((windowWidth / cellSize) * (windowHeight / cellSize)) + " cells)";
+    sf::Text gridText(gridInfo, font, 10);
+    gridText.setFillColor(sf::Color(100, 140, 180));
+    gridText.setPosition(windowWidth / 2.f - gridText.getGlobalBounds().width / 2.f,
+        configBaseY + rowSpacing * 3 + 2);
+    window.draw(gridText);
+
+    // Buttons row
+    float btnRowY = configBaseY + rowSpacing * 3 + 22;
+
+    // Apply & Start button
+    float applyW = 180, applyH = 32;
+    sf::RectangleShape applyBtn(sf::Vector2f(applyW, applyH));
+    applyBtn.setPosition(windowWidth / 2.f - applyW - 8, btnRowY);
     applyBtn.setFillColor(sf::Color(25, 70, 25));
     applyBtn.setOutlineColor(sf::Color(50, 140, 50));
     applyBtn.setOutlineThickness(1);
     window.draw(applyBtn);
-    sf::Text applyText("Apply & Start", font, 16);
+    sf::Text applyText("Apply & Start", font, 14);
     applyText.setFillColor(sf::Color(90, 240, 90));
-    applyText.setPosition(windowWidth / 2.f - applyText.getGlobalBounds().width / 2.f, 358);
+    applyText.setPosition(windowWidth / 2.f - applyW + applyW / 2.f
+        - applyText.getGlobalBounds().width / 2.f - 8, btnRowY + 7);
     window.draw(applyText);
 
     // Back button
-    sf::RectangleShape backBtn(sf::Vector2f(200, 38));
-    backBtn.setPosition(windowWidth / 2.f - 100, 405);
+    sf::RectangleShape backBtn(sf::Vector2f(applyW, applyH));
+    backBtn.setPosition(windowWidth / 2.f + 8, btnRowY);
     backBtn.setFillColor(sf::Color(50, 40, 40));
     backBtn.setOutlineColor(sf::Color(120, 85, 85));
     backBtn.setOutlineThickness(1);
     window.draw(backBtn);
-    sf::Text backText("Back", font, 16);
+    sf::Text backText("Back to Presets", font, 14);
     backText.setFillColor(sf::Color(200, 160, 160));
-    backText.setPosition(windowWidth / 2.f - backText.getGlobalBounds().width / 2.f, 413);
+    backText.setPosition(windowWidth / 2.f + 8 + applyW / 2.f
+        - backText.getGlobalBounds().width / 2.f, btnRowY + 7);
     window.draw(backText);
 
-    sf::Text hint("Click numbers to toggle  |  Settings are on the rules page", font, 10);
+    sf::Text hint("Click numbers to toggle  |  Esc = back  |  Enter = apply", font, 10);
     hint.setFillColor(sf::Color(70, 70, 90));
     hint.setPosition(windowWidth / 2.f - hint.getGlobalBounds().width / 2.f, windowHeight - 20);
     window.draw(hint);
@@ -653,7 +859,11 @@ void Menu::showCustomPage(sf::RenderWindow& window)
 void Menu::handleCustomInput(sf::RenderWindow& window)
 {
     float numStartX = 280;
-    float numSpacing = 48;
+    float numSpacing = 44;
+    int boxSize = 30;
+    int configBaseY = 222;
+    float btnRowY = configBaseY + rowSpacing * 3 + 22;
+    float applyW = 180, applyH = 32;
 
     sf::Event event;
     while (window.pollEvent(event))
@@ -666,6 +876,14 @@ void Menu::handleCustomInput(sf::RenderWindow& window)
             if (event.key.code == sf::Keyboard::Escape) currentPage = MenuPage::RULES;
             else if (event.key.code == sf::Keyboard::M) { toggle(); paused = isShown(); }
             else if (event.key.code == sf::Keyboard::Return) applyCustomRule();
+            else if (event.key.code == sf::Keyboard::Equal) {
+                int i = findSpeedIndex(simulationSpeed);
+                if (i > 0) simulationSpeed = allSpeeds[i - 1];
+            }
+            else if (event.key.code == sf::Keyboard::Hyphen) {
+                int i = findSpeedIndex(simulationSpeed);
+                if (i < numSpeeds - 1) simulationSpeed = allSpeeds[i + 1];
+            }
         }
 
         if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)
@@ -677,22 +895,28 @@ void Menu::handleCustomInput(sf::RenderWindow& window)
             // Birth toggles
             for (int i = 0; i <= 8; i++) {
                 float xPos = numStartX + i * numSpacing - 4;
-                if (mx >= xPos && mx <= xPos + 34 && my >= 182 && my <= 216)
+                if (mx >= xPos && mx <= xPos + boxSize && my >= 122 && my <= 122 + boxSize)
                     customBirth[i] = !customBirth[i];
             }
 
             // Survival toggles
             for (int i = 0; i <= 8; i++) {
                 float xPos = numStartX + i * numSpacing - 4;
-                if (mx >= xPos && mx <= xPos + 34 && my >= 245 && my <= 279)
+                if (mx >= xPos && mx <= xPos + boxSize && my >= 165 && my <= 165 + boxSize)
                     customSurvival[i] = !customSurvival[i];
             }
 
-            // Apply
-            if (mx >= windowWidth / 2 - 100 && mx <= windowWidth / 2 + 100 && my >= 350 && my <= 388)
+            // Config row clicks
+            handleConfigRowClicks(font, configBaseY, mx, my, initMode, simulationSpeed);
+
+            // Apply button
+            float applyX = windowWidth / 2.f - applyW - 8;
+            if (mx >= applyX && mx <= applyX + applyW && my >= btnRowY && my <= btnRowY + applyH)
                 applyCustomRule();
-            // Back
-            if (mx >= windowWidth / 2 - 100 && mx <= windowWidth / 2 + 100 && my >= 405 && my <= 443)
+
+            // Back button
+            float backX = windowWidth / 2.f + 8;
+            if (mx >= backX && mx <= backX + applyW && my >= btnRowY && my <= btnRowY + applyH)
                 currentPage = MenuPage::RULES;
         }
     }
