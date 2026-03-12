@@ -18,6 +18,9 @@ settings.txt
 *.dmg
 *.zip
 
+# Windows Zone.Identifier ADS files
+*:Zone.Identifier
+
 # IDE
 .vscode/
 .idea/
