@@ -135,12 +135,22 @@ jobs:
           update: false
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-sfml
+
+      - name: Download SFML 2.6.2
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.sfml-dev.org/files/SFML-2.6.2-windows-gcc-13.1.0-mingw-64-bit.zip" -OutFile sfml.zip
+          Expand-Archive -Path sfml.zip -DestinationPath .
+          Rename-Item "SFML-2.6.2" "sfml"
 
       - name: Build release
         run: |
-          # Compile
+          SFML_DIR="$(pwd)/sfml"
+
+          # Compile against SFML 2.6.2
           g++ -std=c++17 -O2 -o cellular_automata.exe \
+            -I"${SFML_DIR}/include" \
+            -L"${SFML_DIR}/lib" \
             Main.cpp Grid.cpp RuleSet.cpp Cell.cpp Menu.cpp Settings.cpp \
             -lsfml-graphics -lsfml-window -lsfml-system
 
@@ -150,15 +160,13 @@ jobs:
           cp cellular_automata.exe release/
           cp resources/arial.ttf release/resources/
 
-          # Bundle required DLLs
+          # Bundle SFML DLLs from the downloaded package
+          cp "${SFML_DIR}"/bin/*.dll release/
+
+          # Bundle MinGW runtime DLLs
           MINGW="/mingw64/bin"
           for dll in \
-            sfml-graphics-2.dll sfml-window-2.dll sfml-system-2.dll \
-            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll \
-            libfreetype-6.dll zlib1.dll libpng16-16.dll libbz2-1.dll \
-            libbrotlidec.dll libbrotlicommon.dll libharfbuzz-0.dll \
-            libglib-2.0-0.dll libintl-8.dll libiconv-2.dll libpcre2-8-0.dll \
-            libgraphite2.dll; do
+            libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             [ -f "${MINGW}/${dll}" ] && cp "${MINGW}/${dll}" release/ || true
           done
 
